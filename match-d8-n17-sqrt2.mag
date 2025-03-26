@@ -1,0 +1,125 @@
+load "../shtukas/all_kum_fib.mag";
+af5 := all_fibs[5];
+kum5r := ChangeRing(kum5,Fr);
+P5r := AmbientSpace(kum5r);
+P1r := ProjectiveSpace(Fr,1);
+af5r := [map<kum5r->P1r|DefiningPolynomials(i)>: i in af5];
+gfs := [];
+for i in af5r do
+  time Append(~gfs,Difference((P1r![r,1])@@i,BaseScheme(i)));
+end for;
+sptsr := SingularPoints(kum5r);
+
+jacs := [];
+P2r := ProjectiveSpace(Fr,2);
+for i in gfs do
+  ls1 := LinearSystem(P5r,1);
+  for s in sptsr do
+    if s in i then ls1 := LinearSystem(ls1,s); end if;
+    if #Sections(ls1) eq 3 then break; end if;
+  end for;
+  time gf2 := Image(map<i->P2r|Sections(ls1)>);
+  // one of these takes 4 minutes
+  time Append(~jacs,MinimalModel(Jacobian(Curve(gf2))));
+end for;
+
+for i in [1..#jacs] do
+  // put the D6 fibres at 0 and infinity
+  disc := Numerator(Discriminant(jacs[i]));
+  if Degree(disc) eq 16 then
+    rt := rep{r[1]: r in Roots(disc)|r[2] eq 8};
+    jacs[i] := BaseChange(jacs[i],hom<Fr->Fr|r+rt>);
+  else
+    rts := [r[1]: r in Roots(disc)|r[2] eq 8];
+    assert #rts eq 2;
+    jacs[i] := BaseChange(jacs[i],hom<Fr->Fr|r+rts[1]>);
+    time jacs[i] := MinimalModel(BaseChange(jacs[i],hom<Fr->Fr|1/r>));
+    jacs[i] := BaseChange(jacs[i],hom<Fr->Fr|r+1/(rts[2]-rts[1])>);
+  end if;
+  disc := Numerator(Discriminant(jacs[i]));
+  assert Degree(disc) eq 16 and Degree(TrailingTerm(disc)) eq 8;
+end for;
+
+qf2<r2> := QuadraticField(2);
+A4 := AffineSpace(qf2,4);
+A3 := AffineSpace(qf2,3);
+pols := [&*[Polynomial([-i[1],1]): i in Roots(Numerator(Discriminant(j)))|i[1] ne 0]: j in jacs];
+to4s := [map<A3->A4|[Evaluate(Coefficient(p,i),[A3.1,A3.2])*A3.3^(4-i): i in [0..3]]>: p in pols];
+// see d8-n17-work-sqrt2.mag
+goal := A4![ 1/4096*(3025947912*r2 + 4279336577), 1/64*(1650326*r2 + 2333913), 1/32*(12188*r2 + 17239), 18*r2 + 25];
+togoal := [Difference(goal@@i,BaseScheme(i)): i in to4s];
+allpc := {@x: x in PrimaryComponents(t), t in togoal@};
+c8<w8> := CyclotomicField(8);
+homs := [hom<qf2->c8|w8^i+w8^-i>: i in [1,3]];
+Embed(qf2,c8,w8^3+1/w8^3);
+allrat := {@[x[1],x[2]]: x in RationalPoints(i,c8), i in togoal@};
+// interestingly, we seem to be getting two elliptic curves related by a
+// 3-isogeny, rather than the same one twice.  This is presumably
+// connected with what we saw before, about needing a map of degree 3.
+e2 := EllipticCurve([r2,-r2+1,r2+1,-2*r2+1,-r2]) where r2 is -r2;
+e1 := EllipticCurve([r2,-r2+1,r2+1,13*r2-19,47*r2-69]);
+es := [e1,e2];
+/*
+rpt := rep{x: x in allrat|[jInvariant(EllipticCurve([0,-x[i]-1,0,x[i],0])): i in [1,2]] eq [homs[1](jInvariant(es[i])): i in [1,2]]};
+assert rpt eq allrat[1];
+ew1 := EllipticCurve([0,-rpt[1]-1,0,rpt[1],0]);
+ew2 := EllipticCurve([0,-rpt[2]-1,0,rpt[2],0]);
+c8r8<r8> := FunctionField(c8);
+we1 := WeierstrassModel(e1);
+we2 := WeierstrassModel(e2);
+toc8 := hom<F->c8|rpt[1],rpt[2]>;
+toc8r8 := hom<Fr->c8r8|hom<F->c8r8|rpt[1],rpt[2]>,r8>;
+ee_c8 := BaseChange(ee,toc8);
+kum4_c8 := BaseChange(kum4,toc8);
+f14 := Normalization(Expand(to5*af5[1]));
+P1c8 := ProjectiveSpace(c8,1);
+f14_c8 := map<kum4_c8->P1c8|[&+[&*[kum4_c8.i^Degree(m,i): i in [1..5]]*toc8(MonomialCoefficient(e,m)): m in Monomials(e)]: e in DefiningPolynomials(f14)]>;
+f14_c8_2 := map<x->P1c8|[x.2,x.1-rpt[2]*x.2-rpt[1]*x.3+rpt[1]*rpt[2]*x.4]> where x is kum4_c8;
+P1c8r8 := ProjectiveSpace(c8r8,1);
+kum4_c8r8 := ChangeRing(kum4_c8,c8r8);
+f14_c8r8_2 := map<x->P1c8r8|[x.2,x.1-rpt[2]*x.2-rpt[1]*x.3+rpt[1]*rpt[2]*x.4]> where x is kum4_c8r8;
+gfr8 := Curve(Difference(((P1c8r8![r8,1])@@f14_c8r8_2),BaseScheme(f14_c8r8_2)));
+// and this is as desired
+
+e1w := BaseChange(e1,homs[1]);
+e2w := BaseChange(e2,homs[1]);
+// this might be too much of a mess.
+
+// If you just base change the map on kum4, it turns out that the
+// map you're looking for is defined by
+// [x.1 - (q+1)*x.2 - p*x.3 + p*q*x.4, x.1 - q*x.2 - p*x.3 + p*q*x.4]
+// or just [x.2,x.1 - q*x.2 - p*x.3 + p*q*x.4]
+// up to simple changes of coordinates.  This turns out to mean that
+// one of the fibres (where the second equation vanishes) consists
+// of the image of [0,1,0,q,0,1], [*,*,*,q,0,1], [p,0,1,*,*,*].
+che1 := Image(map<we1->AmbientSpace(e1)|[e1.1-Roots(DivisionPolynomial(we1,2))[1,1]*e1.3,e1.2,e1.3]>);
+che2 := Image(map<we2->AmbientSpace(e2)|[e2.1-Roots(DivisionPolynomial(we2,2))[1,1]*e2.3,e2.2,e2.3]>);
+
+P22qf2 := ProductProjectiveSpace(qf2,[2,2]);
+// was with we1, we2
+e1e2 := Scheme(P22qf2,[Evaluate(DefiningPolynomial(che1),[P22qf2.i: i in [1..3]]),Evaluate(DefiningPolynomial(che2),[P22qf2.i: i in [4..6]])]);
+P4qf2 := ProjectiveSpace(qf2,4);
+to4qf2 := map<e1e2->P4qf2|DefiningPolynomials(to4)>;
+kum4qf2 := Image(to4qf2);
+to4qf2 := map<e1e2->kum4qf2|DefiningPolynomials(to4)>;
+P1qf2 := ProjectiveSpace(qf2,1);
+// just try to copy the formula, really
+mymap := map<x->P1qf2|[x.1,x.5]> where x is kum4qf2;
+
+qf2u2<u2> := FunctionField(qf2);
+P1qf2u2 := ProjectiveSpace(qf2u2,1);
+kum4qf2u2 := ChangeRing(kum4qf2,qf2u2);
+mymapu2 := map<kum4qf2u2->P1qf2u2|DefiningPolynomials(mymap)>;
+gf := Curve(Difference((P1qf2u2![u2,1])@@mymapu2,BaseScheme(mymapu2)));
+
+
+mymap := map<kum4qf2->P1qf2|[x.1-rts[2]*x.2-rts[1]*x.3+rts[1]*rts[2]*x.4,x.2]> where x is kum4qf2;
+assert mymap(kum4qf2 meet afib) eq Scheme(P1qf2,P1qf2.1);
+
+l12 := rep{c: c in PrimaryComponents(to4qf2(Scheme(e1e2,[e1e2.1-Roots(DivisionPolynomial(we1,2))[1,1]*e1e2.3])))|Dimension(c) eq 1};
+l22 := rep{c: c in PrimaryComponents(to4qf2(Scheme(e1e2,[e1e2.4-Roots(DivisionPolynomial(we2,2))[1,1]*e1e2.6])))|Dimension(c) eq 1};
+l3 := rep{c: c in PrimaryComponents(Scheme(kum4qf2,[P4qf2.i: i in [3,4]]))|Degree(c) eq 1};
+afib := l12 join l22 join l3;
+res := Difference(Scheme(kum4qf2,rep{c: c in DefiningPolynomials(afib)|Degree(c) eq 1}),afib);
+rts := [Roots(DivisionPolynomial(i,2))[1,1]: i in [we1,we2]];
+*/

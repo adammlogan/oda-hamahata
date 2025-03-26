@@ -1,0 +1,120 @@
+function blowup(v,pt)
+  Pn := AmbientSpace(v);
+  dpn := Dimension(Pn);
+  prp := ProductProjectiveSpace(BaseField(v),[dpn,dpn-1]);
+  tobl := map<v->prp|[v.i: i in [1..dpn+1]] cat DefiningPolynomials(Cluster(Pn!pt))>;
+  vbl := tobl(v);
+  tobl := map<v->vbl|DefiningPolynomials(tobl)>;
+  frombl := map<vbl->v|[vbl.i: i in [1..dpn+1]]>;
+  Pnm1 := ProjectiveSpace(BaseField(v),dpn-1);
+  pr2 := map<vbl->Pnm1|[vbl.i: i in [dpn+2..2*dpn+1]]>;
+  ed := pt@@frombl;
+  return vbl,ed,frombl,pr2;
+end function;
+
+function selfint(s,c)
+  error if [Dimension(i): i in [c,c meet s,s]] ne [1,1,2], "invalid input";
+  deg := Min([Degrees(c,e): e in DefiningPolynomials(c)]);
+  ind := 1;
+  Pn := AmbientSpace(s);
+  done := false;
+  repeat
+    ls := LinearSystem(Pn,deg);
+    ls := LinearSystem(ls,c);
+    ls := LinearSystemTrace(ls,s);
+    ct := 0;
+    while ct lt 100 do try
+      ct +:= 1; if #Sections(ls) le 1 then ct +:= 99; end if;
+      rd := &+[Random(-10,10)*i: i in Sections(ls)];
+      res := Difference(Scheme(s,rd),c);
+      rc := res meet c;
+      assert Dimension(rc) lt 1;
+      repeat
+	l0 := &+[Random(-1,1)*i: i in Sections(LinearSystem(Pn,deg))];
+	cl0 := Scheme(c,l0);
+      until Dimension(cl0) lt 1;
+      done := true;
+      catch e; end try;
+      if done then break; end if;
+    end while;
+    deg[ind] +:= 1;
+    ind +:= 1; if ind gt #deg then ind := 1; end if;
+  until done;
+  return Degree(cl0) - Degree(rc);
+end function;
+
+  
+/*function blowup(v,pt)
+  Pn := AmbientSpace(v);
+  dpn := Dimension(Pn);
+  prp := ProductProjectiveSpace(BaseField(v),[dpn,dpn-1]);
+  frombl := map<prp->Pn|[prp.i: i in [1..dpn+1]]>;
+  cl := Cluster(Pn!pt);
+  bl := Scheme(v@@frombl,[d[i]@@frombl*prp.(dpn+1+j)-d[j]@@frombl*prp.(dpn+1+i): i,j in [1..#d]]) where d is DefiningPolynomials(cl);
+  ed := pt@@frombl;
+  bld := Difference(bl,ed);
+  while bl ne bld do
+    bl := bld; bld := Difference(bld,ed);
+  end while;
+  frombl := map<bl->v|[bl.i: i in [1..dpn+1]]>;
+  ed := pt@@frombl;
+  tobl := map<v->bl|[Pn.i: i in [1..dpn+1]] cat DefiningPolynomials(cl)>;
+  Pnm1 := ProjectiveSpace(BaseField(v),dpn-1);
+  pr2 := map<bl->Pnm1|[bl.i: i in [dpn+2..2*dpn+1]]>;
+  return bl,ed,frombl,pr2;
+end function;
+*/  
+function deg_a1(v,c,pt)
+  if pt notin c then return 0;
+  elif IsNonsingular(c!pt) then return 1;
+  end if;
+  vbl,ed,frombl := blowup(v,pt);
+  cbl := c@@frombl;
+  cde := Difference(cbl,ed);
+  while cbl ne cde do
+    cbl := cde; cde := Difference(cde,ed);
+  end while;
+  deg := Degree(cde meet ed);
+  assert deg ge 2;
+  return deg;
+end function;
+
+// returns the degree of intersection of the blowups at the point,
+// which is less than the degree of intersection by the amount we need to
+// reduce for that point
+function deg_less_pt(v,c1,c2,pt)
+  if pt notin (c1 meet c2) then return Degree(c1 meet c2);
+  elif IsNonsingular(c1!pt) and IsNonsingular(c2!pt) then return Degree(c1 meet c2) - 1;
+  end if;
+  vbl,ed,frombl := blowup(v,pt);
+  c1bl := (v meet c1)@@frombl;
+  c1de := Difference(c1bl,ed);
+  while c1bl ne c1de do
+    c1bl := c1de; c1de := Difference(c1de,ed);
+  end while;
+
+  c2bl := (v meet c2)@@frombl;
+  c2de := Difference(c2bl,ed);
+  while c2bl ne c2de do
+    c2bl := c2de; c2de := Difference(c2de,ed);
+  end while;
+
+  return Degree(c1bl meet c2bl);
+end function;
+
+function deg_c1_c2(v,c1,c2,pts)
+  d0 := Degree(c1 meet c2); deg := d0;
+  for pt in pts do
+    deg -:= (d0 - deg_less_pt(v,c1,c2,pt));
+  end for;
+  return deg;
+end function;
+
+function excise(x,y:verbose := false)
+  repeat
+    x0 := x;
+    x := Difference(x,y);
+    if verbose then printf "."; end if;
+  until x0 eq x;
+  return x;
+end function;

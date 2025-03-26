@@ -1,0 +1,583 @@
+load "k3pic.mag";
+load "d8-n28.mag";
+load "interp.mag";
+load "project.mag";
+// In this case, it comes to us as a complete intersection of four quadrics
+// in P^6, which is nice.  There are 6 singular points, which are not
+// canonical.  However, they guide us to a couple of involutions, which
+// certainly looks like a good start.  These really are the Atkin-Lehners
+// as well.
+
+// Let's try this again.  We know from before that the quotient
+// by the four-group is one of those weird elliptic surfaces.
+// But the quotient by aut1*aut2 has h^{2,0} = 1, so maybe we can work
+// with it somehow.
+
+"finding the surface in P^6";
+P6 := A;
+in6 := Surface(P6,MinimalBasis(Ideal(S)));
+// these are the cusps and there are no elliptic points
+spts := SingularPoints(in6);
+aut1 := map<S->S|[4*S.3,S.2,S.1/4,4*S.6,S.5,S.4/4,-S.7]>;
+aut2 := map<S->S|[7*S.4,7*S.5,7*S.6,S.1/7,S.2/7,S.3/7,-S.7]>;
+auts := [IdentityMap(S),aut1,aut2,aut1*aut2];
+// Let's take the full quotient.
+ls2 := LinearSystem(P6,2);
+ls2 := LinearSystem(P6,[&+[i@@a: a in auts]: i in Sections(ls2)|&+[i@@a: a in auts] ne 0]);
+ls2 := LinearSystemTrace(ls2,in6);
+qto6 := map<in6->P6|Sections(ls2)>;
+qin6 := Image(qto6);
+qin6 := Surface(P6,[x: x in DefiningPolynomials(qin6)|Degree(x) eq 2]);
+qto6 := map<in6->qin6|Sections(ls2)>;
+
+"finding a model of degree 32 in P^12";
+ls2 := LinearSystem(P6,2);
+ssq6 := SingularSubscheme(qin6);
+pcssq6 := PrimaryComponents(ssq6);
+for i in [1..4] do ls2 := LinearSystem(ls2,ReducedSubscheme(pcssq6[i])); end for;
+ls2 := LinearSystemTrace(ls2,qin6);
+P12 := ProjectiveSpace(Q,12);
+to12 := map<qin6->P12|Sections(ls2)>;
+qin12 := try_image(to12,{*2^^36,3^^36*},3:verbose);
+qto12 := map<qin6->qin12|Sections(ls2)>;
+// degree 32 in P^12
+// and singular along two lines
+l1 := rep{x: x in PrimeComponents(Scheme(qin12,[P12.12,P12.13]))|Degree(x) eq 1};
+// we can interpolate to find the other
+l2 := rep{x: x in PrimeComponents(Scheme(qin12,[P12.8 + 564*P12.13,P12.9 - 120*P12.13,P12.10 - 144*P12.13,P12.11 - 108*P12.13,P12.12 + 2*P12.13]))|Degree(x) eq 1};
+assert forall{l: l in [l1,l2]|IsSingular(qin12(Parent(gp[1]))!Eltseq(gp)) where gp is GenericPoint(l)};
+
+"projecting away from singularities to P^8";
+ls1 := LinearSystem(P12,1);
+for i in [l1,l2] do ls1 := LinearSystem(ls1,i); end for;
+// qin8,qto8 := map_lin(qin12,Sections(ls1));
+// P8 := AmbientSpace(qin8);
+P8 := ProjectiveSpace(Q,8);
+qto8 := map<qin12->P8|Sections(ls1)>;
+qin8 := try_image(qto8,{*2^^8,3^^22,4^^7*},4:verbose);
+qto8 := map<qin12->qin8|Sections(ls1)>;
+// degree 20 in P^8
+spt1 := qin8![-5861/601,-4759/1202,-732/601,3994/601,1,0,0,0,0];
+spt2 := qin8![16310064/2471,5884428/2471,241344/353,-1282884/353,-1330143/2471,1200/7,180/7,9/7,1];
+ls1 := LinearSystem(P8,1);
+for i in [spt1,spt2] do ls1 := LinearSystem(ls1,i); end for;
+// why is this fast sometimes and slow other times?
+// qin62,qto62 := map_lin(qin8,Sections(ls1):amb := P6);
+"mapping back to P^6";
+qto62 := map<qin8->P6|Sections(ls1)>;
+qin62 := try_image(qto62,{*2,3^^10,4^^12*},4: verbose);
+qto62 := map<qin8->qin62|DefiningPolynomials(qto62)>;
+dto62 := Expand(qto12*qto8*qto62);
+// degree 16 in P^6
+// I believe there are 4 conjugate singular points.  But maybe we don't
+// need to know.
+/*p := 23; F := GF(p);
+qin62p := ChangeRing(qin62,F);
+P6p := AmbientSpace(qin62p);
+qin62p := Surface(P6p,Ideal(qin62p));
+k6p := CanonicalSheaf(qin62p);
+time k6p2 := TensorProduct(k6p,k6p:Maximize); // 30 seconds
+gsm := GlobalSectionSubmodule(k6p2);
+time mycp := ZeroSubscheme(k6p2,gsm.9); // 30 seconds
+time k6p3 := TensorProduct(k6p2,k6p:Maximize); // 30 seconds
+time k6p4 := TensorProduct(k6p2,k6p2:Maximize); // 30 seconds
+time k6p6 := TensorProduct(k6p2,k6p4:Maximize); // 120 seconds
+dm6 := DivisorMap(k6p6);
+// time k6p6 := TensorProduct(k6p3,k6p3:Maximize); // 130 seconds
+allfibs := [i@@dm6: i in RationalPoints(Codomain(dm6))];
+// fibres of degree 24 and genus 1
+// We get a 6-section by intersecting with a curve of degree 5 in
+// x4 = x5 = x6 = 0.  And that is the best we can do, because there
+// are double and triple fibres.
+c5 := Curve(PrimaryComponents(Scheme(qin62,[P6.i: i in [5..7]]))[1]);
+assert Degree(c5) eq 5;
+*/
+// I should do this for different p and put the special fibres at 0, 1, inf
+// of course I have to distinguish the D4 from the double fibre
+// we get equations of degree 2, 4, 6, and then the base is empty
+
+Qt<t> := FunctionField(Q);
+P1 := ProjectiveSpace(Q,1);
+/*alleqs := [**];
+jps := [**];
+"trying to work out details of the fibration";
+
+for p in PrimesInInterval(20,100) do try
+    "starting", p;
+    F := GF(p);
+    qin62p := ChangeRing(qin62,F);
+    P6p := AmbientSpace(qin62p);
+    qin62p := Surface(P6p,Ideal(qin62p));
+    k6p := CanonicalSheaf(qin62p);
+    time k6p2 := TensorProduct(k6p,k6p:Maximize); // 30 seconds
+    gsm := GlobalSectionSubmodule(k6p2);
+    time mycp := ZeroSubscheme(k6p2,gsm.9); // 30 seconds
+    time k6p3 := TensorProduct(k6p2,k6p:Maximize); // 30 seconds
+    time k6p4 := TensorProduct(k6p2,k6p2:Maximize); // 30 seconds
+    time k6p6 := TensorProduct(k6p2,k6p4:Maximize); // 120 seconds
+    dm6 := DivisorMap(k6p6);
+    P1p := Codomain(dm6);
+    ptsp1 := RationalPoints(P1p);
+    allfibs := [i@@dm6: i in ptsp1];
+    pts := []; // deg 8, deg 12, deg 12
+    for i in [1..#allfibs] do
+      ri := ReducedSubscheme(allfibs[i]);
+      printf ".";
+
+      if Degree(ri) eq 8 then
+        pts[1] := ptsp1[i];
+        printf " found triple fibre ";
+      elif Degree(ri) eq 12 and ArithmeticGenus(ri) eq 1 then
+        pts[2] := ptsp1[i];
+        printf " found double fibre ";
+      elif Degree(ri) eq 12 and ArithmeticGenus(ri) eq 0 then
+        pts[3] := ptsp1[i];
+        printf " found D4 fibre ";
+      end if;
+      if forall{x: x in [1..3]|IsDefined(pts,x)} then break; end if;
+    end for;
+    assert forall{x: x in [1..3]|IsDefined(pts,x)};
+    "locations of bad fibres:", pts;
+    printf "\nfinding equations\n";
+    tr := TranslationOfSimplex(P1p,pts);
+    mdm := SchemeGraphMapToSchemeMap(dm6)*tr^-1;
+    pts62p := RationalPoints(qin62p);
+    somepts := #pts62p le 500 select pts62p else RandomSubset(Set(pts62p),500);
+    dm := map<qin62p->P1p|interpolate_map(mdm,2,somepts)>;
+    eq4 := interpolate_map(dm,4,somepts);
+    assert BaseScheme(dm) ne Scheme(BaseScheme(dm),eq4[1]);
+    dm := map<qin62p->P1p|Append(AllDefiningPolynomials(dm),eq4[1])>;
+    eq6 := interpolate_map(dm,6,somepts);
+    assert BaseScheme(dm) ne Scheme(BaseScheme(dm),eq6[1]);
+    dm := map<qin62p->P1p|Append(AllDefiningPolynomials(dm),eq6[1])>;
+    assert IsEmpty(BaseScheme(dm));
+    Append(~alleqs,AllDefiningPolynomials(dm));
+    printf "\nworking out the j-invariant on the base\n";
+    
+    jpairs := [];
+    P2p := ProjectiveSpace(GF(p),2);
+    for i in [1..p] do
+      if P1p![i-1,1] notin pts then
+        try
+          // ep := EllipticCurve(c,Random(RationalPoints(c))) where c is Curve(allfibs[i]);
+          ci := Curve(allfibs[i]);
+          rp := RationalPoints(ci);
+          if forall{x: x in rp|IsNonsingular(x)} then
+            pl := Place(rp[1]);
+            dm := DivisorMap(3*pl);
+            ls3 := LinearSystem(P2p,3);
+            for p in rp do try ls3 := LinearSystem(ls3,P2p![Evaluate(i,Eltseq(p)): i in DefiningPolynomials(dm)]); catch e; end try; end for;
+            assert #Sections(ls3) eq 1;
+            cub := BaseScheme(ls3);
+            Append(~jpairs,<(tr^-1)(P1p![i-1,1])[1],jInvariant(Jacobian(Curve(cub)))>);
+            printf ".";
+          end if;
+          catch e printf "?"; end try;
+      end if;
+      if #jpairs ge 15 then break; end if;
+    end for;
+    if #jpairs ge 15 then
+      rf := ratfn([i[1]: i in jpairs],[i[2]: i in jpairs],6);
+      assert #rf eq 1;
+      Append(~jps,rf[1]);
+    end if;
+    "done", p;
+  catch e "failed at", p;
+  end try;
+end for;
+
+nums := [*&*[x[1]^(x[2] div 3): x in Factorization(Numerator(i))]: i in jps*];
+assert forall{x: x in nums|Degree(x) eq 2};
+jinv := recover_rat([*LeadingCoefficient(Numerator(i)): i in jps*])*&+[recover_rat([*Coefficient(Numerator(i),j): i in nums*])*t^j: j in [0..6]]^3/&+[recover_rat([*Coefficient(Denominator(i),j): i in jps*])*t^j: j in [0..6]];
+
+assert jinv eq recover_rat([*LeadingCoefficient(Numerator(i)): i in jps[1..#jps-1]*])*&+[recover_rat([*Coefficient(Numerator(i),j): i in nums[1..#nums-1]*])*t^j: j in [0..6]]^3/&+[recover_rat([*Coefficient(Denominator(i),j): i in jps[1..#jps-1]*])*t^j: j in [0..6]];
+*/
+jinv := (-15625/28*t^6 + 455625/98*t^5 - 3116475/196*t^4 + 68555889/2401*t^3 - 
+    272629233/9604*t^2 + 3486784401/235298*t - 10460353203/3294172)/(t^6 - 
+    135/49*t^5 - 2187/2744*t^4 + 59049/5488*t^3 - 64304361/4302592*t^2 + 
+    129140163/15059072*t - 387420489/210827008);
+// and we can recover the equations of degree 2
+/* int2 := [&+[recover_rat([*MonomialCoefficient(a[1,n],Parent(a[1,n])!m): a in alleqs*])*m: m in MonomialsOfDegree(CoordinateRing(P6),2)]: n in [1,2]];
+g1f := map<qin62->P1|int2>;*/
+"writing down a genus-1 fibration by interpolating some mod p fibrations";
+g1f := map<qin62->P1| [
+    x[1]*x[2] - 173/18*x[2]^2 - 583/144*x[1]*x[3] + 1093/18*x[2]*x[3] - 
+        124957/1152*x[3]^2 + 31/36*x[1]*x[4] - 121/18*x[2]*x[4] + 
+        827/36*x[3]*x[4] - 25/18*x[4]^2 - 173/144*x[1]*x[5] + 473/72*x[2]*x[5] -
+        3133/288*x[3]*x[5] - 11/9*x[4]*x[5] + 8/3*x[5]^2 + 57/8*x[1]*x[6] - 
+        71/12*x[2]*x[6] + 7261/144*x[3]*x[6] - 4/3*x[4]*x[6] - 380/9*x[5]*x[6] -
+        392/9*x[6]^2 - 331/12*x[1]*x[7] + 2269/18*x[2]*x[7] - 3217/8*x[3]*x[7] +
+        88/9*x[4]*x[7] + 917/9*x[5]*x[7] - 22/3*x[6]*x[7] + 292/9*x[7]^2,
+    9515/486*x[1]*x[2] - 43373/243*x[2]^2 - 126353/1944*x[1]*x[3] + 
+        516931/486*x[2]*x[3] - 13765865/7776*x[3]^2 + 1769/324*x[1]*x[4] - 
+        34367/486*x[2]*x[4] + 390971/1944*x[3]*x[4] - 38/243*x[4]^2 - 
+        57947/3888*x[1]*x[5] + 50885/648*x[2]*x[5] - 545003/7776*x[3]*x[5] - 
+        1415/81*x[4]*x[5] + 2264/81*x[5]^2 + 4453/72*x[1]*x[6] + 
+        206333/972*x[2]*x[6] - 2022509/3888*x[3]*x[6] + 20240/81*x[4]*x[6] - 
+        158596/243*x[5]*x[6] + 18080/243*x[6]^2 - 413735/972*x[1]*x[7] + 
+        919883/486*x[2]*x[7] - 10375055/1944*x[3]*x[7] - 49448/243*x[4]*x[7] + 
+        422899/243*x[5]*x[7] - 25898/9*x[6]*x[7] + 872284/243*x[7]^2
+]>;
+// As promised, the base scheme has dimension 1 and degree 8.
+// We can check that fibres have arithmetic genus 1.  So this really is
+// the fibration.  If we keep calculating we can find the other equations
+// too, which would be helpful for writing the general fibre.  Or maybe
+// we could find that by the affine-patch trick, since the reduced
+// subscheme of the base scheme includes a linear equation.
+
+// Remember, there are three intermediate covers, where we mod out by
+// A_p7, A_2, A_2p7 respectively.
+// The dimensions of H^{2,0} are 0,0,1.
+// The first two are (essentially) unramified, so they must still be general
+// type.  On the other hand, the second is unramified over this one, so it
+// must be Kodaira dimension 1.  Is it possible that there is a 3-section?
+
+"finding a quotient by an Atkin-Lehner involution";
+ls2_1 := LinearSystem(P6,2);
+ls2_1 := LinearSystem(P6,[i+i@@aut1: i in Sections(ls2_1)|i+i@@aut1 ne 0]);
+ls2_1t := LinearSystemTrace(ls2_1,in6);
+q1toq := [CoefficientMap(ls2_1t)(i): i in DefiningPolynomials(qto6)];
+q1to12 := map<in6->P12|Sections(ls2_1t)>;
+q1in12 := try_image(q1to12,{*2^^38,3^^7*},3:verbose);
+q1to12 := map<in6->q1in12|Sections(ls2_1t)>;
+// so we should be able to pull back the genus-1 curves through this.
+q1toq := map<q1in12->qin6|[&+[v[i]*P12.i: i in [1..13]]: v in q1toq]>;
+// alternatively, we should eventually be able to work with this one directly.
+// points 2 and 4 are quotients of cusps, 1 and 3 are images of two
+sptsq1 := {@q1to12(i): i in spts@};
+
+// also, let me write down the Atkin-Lehner on the model in P^12
+// to do this, we pull back the sections of ls2_1t by aut2 and then
+// map them back to ls2_1t
+// luckily it's easy to find the map
+"writing down the Atkin-Lehner involution on the P^12 model";
+function al2(sec)
+  ls2 := LinearSystem(P6,2);
+  ls2 := LinearSystem(ls2,in6);
+  ls2fix := LinearSystem(P6,[i+i@@aut1: i in Sections(ls2)|i+i@@aut1 ne 0]);
+  bas := [CoefficientMap(ls2_1)(i): i in Sections(ls2fix)];
+  // since luckily the basis of ls2_1t is the last 13 elements of the
+  // basis of ls2_1
+  ims := [Vector(Eltseq(-b)[4..16]): b in bas] cat Basis(VectorSpace(Q,13));
+  s := sec@@aut2;
+  imvec := &+[c[i]*ims[i]: i in [1..16]] where c is CoefficientMap(ls2_1)(s);
+  // impol := PolynomialMap(ls2_1t)(imvec);
+  return imvec;
+end function;
+al2_q1 := map<q1in12->q1in12|[&+[v[i]*P12.i: i in [1..13]] where v is al2(s): s in Sections(ls2_1t)]>;
+fix_al2 := Scheme(q1in12,[d[i]*P12.j-d[j]*P12.i: i,j in [1..13]]) where d is DefiningPolynomials(al2_q1);
+ls1 := LinearSystem(P12,1);
+for i in sptsq1 do
+  ls1 := LinearSystem(ls1,i);
+end for;
+// q1in8,q1to8 := map_lin(q1in12,Sections(ls1):amb := P8);
+q1to8 := map<q1in12->P8|Sections(ls1)>;
+q1in8 := try_image(q1to8,{*2^^8,3^^16,4^^6*},4:verbose);
+q1to8 := map<q1in12->q1in8|Sections(ls1)>;
+fix_al2_in8 := q1to8(fix_al2);
+// and this thing is, again, singular along four lines.
+lines := {@x: x in PrimeComponents(Scheme(q1in8,P8.i)), i in [7..9]|Dimension(x) eq 1 and Degree(x) eq 1 and IsSingular(q1in8(Parent(gp[1]))!Eltseq(gp)) where gp is GenericPoint(x)@};
+// the order here is 4,2,3,1, i.e., lines[4] comes from sptsq1[1], etc.
+"finding some lines on it";
+assert #lines eq 4;
+
+// to try to pull back the curves
+qin6p := ChangeRing(qin6,F);
+qin12p := ChangeRing(qin12,F);
+qin8p := ChangeRing(qin8,F);
+qin62p := ChangeRing(qin62,F);
+qto12p := map<qin6p->qin12p|DefiningPolynomials(qto12)>;
+qto8p := map<qin12p->qin8p|DefiningPolynomials(qto8)>;
+qto62p := map<qin8p->qin62p|DefiningPolynomials(qto62)>;
+
+q1in12p := ChangeRing(q1in12,F);
+q1in8p := ChangeRing(q1in8,F);
+q1toqp := map<q1in12p->qin6p|DefiningPolynomials(q1toq)>;
+q1to8p := map<q1in12p->q1in8p|DefiningPolynomials(q1to8)>;
+
+l2s := [rep{x: x in PrimaryComponents(Scheme(q1in8,Ideal(i)^2))|Dimension(x) eq 1}: i in lines];
+// 1,3 2,4: smooth(?) of degree 20
+
+// new way.
+ls2 := LinearSystem(P8,2);
+for i in [1..4] do
+  ls2 := LinearSystem(ls2,(i eq 1 select lines else l2s)[i]);
+end for;
+ls2 := LinearSystemTrace(ls2,q1in8);
+"mapping the quotient to P^6";
+q1to62 := map<q1in8->P6|Sections(ls2)>;
+q1in62 := try_image(q1to62,{*2^^3,3^^8,4^^2*},4:verbose);
+q1to62 := map<q1in8->q1in62|Sections(ls2)>;
+fix_al2_in62 := q1to62(fix_al2_in8);
+c9 := rep{x: x in PrimeComponents(Scheme(q1in8,P8.6))|Degree(x) eq 9};
+c9_6 := Curve(q1to62(q1in8 meet c9));
+assert Degree(c9_6) eq 5;
+// with n = 4 we get two degree-3 components from P8.7
+"using the sheaf machinery to find a genus-1 fibration";
+q1in62t := ChangeRing(q1in62,Qt);
+k62t := CanonicalSheaf(q1in62t); // 15 seconds
+dmt := DivisorMap(k62t); // 20 seconds
+imfix := dmt(Scheme(q1in62t,DefinnigPolynomials(q1to62)));
+assert Dimension(imfix) eq 0; // and we can tell from this.
+// gft := (Codomain(dmt)![t,1])@@dmt; // 5 minutes
+"writing down the generic fibre";
+gft := Scheme(q1in62t,[Evaluate(i,[q1in62t.j: j in [1..7]] cat [t,1]): i in Basis(dmt`GraphIdeal)]);
+gft := Scheme(AmbientSpace(q1in62t),EasyBasis(Ideal(gft))); // 5 minutes
+d3 := &join PrimeComponents(Scheme(gft,DefiningPolynomials(c9_6)));
+P3t := ProjectiveSpace(Qt,3);
+// base scheme of degree 3, so a birational map to a cubic
+d3map := map<gft->P3t|[x: x in DefiningPolynomials(d3)|Degree(x) eq 1]>;
+// time gf3 := try_image(d3map,{*1,3*},3);
+// I found this by interpolation--luckily coefficients are only degree 7
+"loading the equation (found by interpolatoin";
+load "cubic.mag";
+"writing down the Jacobian";
+cub := Curve(P2t,cubic);
+d2map := map<gft->cub|DefiningPolynomials(d3map)[2..4]>;
+jac := Jacobian(cub);
+assert #Factorization(Numerator(Discriminant(jac))) eq 6;
+mm := MinimalModel(jac);
+// big but we can see the two I4 and four I1
+// unfortunately reduce_model will take a long time for the factorization.
+// I do want to find the triple fibres (presumably by interpolation, but
+// it won't be too bad).
+"checking that we have an automorphism";
+newt := (-3300827432998700936602290179460217692585926712676441090054154847651617606756972198619182270520861725929307506621525379/754921959135406171016478935801678107448171087088418501777636492874621377048036164144418759438945221071874740182302752*t - 21727454529469042280485591589985447937234168230353484399042086815726712353423357148649881704888379283737726194442073207/3019687836541624684065915743206712429792684348353674007110545971498485508192144656577675037755780884287498960729211008)/(t + 3300827432998700936602290179460217692585926712676441090054154847651617606756972198619182270520861725929307506621525379/754921959135406171016478935801678107448171087088418501777636492874621377048036164144418759438945221071874740182302752);
+assert j eq Evaluate(j,newt) where j is jInvariant(mm);
+// we can see the two fixed points that go into the double fibres downstairs
+// (one a D4 and the other double)
+// the cubic becomes triple at -12177365658055732137407888861795253190190992002603898992791/6186399324766379428417498033145018942956796563481277317792
+// and at the roots of t^2 + 667053491557877178592194571876830589849486036790050846279859113559424342169718277579302323101025873818074681861286549/308334649051742682691304589489376915921322844949411928273935253686295252792824559920497112413659033836852359478375876*t + 2792324112720108867038623966797959998646716488524655346491841287133857001495603288637064758216622334137243214329519351/1233338596206970730765218357957507663685291379797647713095741014745181011171298239681988449654636135347409437913503504, which splits in Q(sqrt -3).
+// newt exchanges the roots, which makes sense.
+// Making these small would probably simplify the model a lot.
+
+k62 := CanonicalSheaf(q1in62);
+dm := DivisorMap(k62);
+fixt := Roots(Numerator(newt-t));
+fixfibs := [(Codomain(dm)![i[1],1])@@dm: i in fixt];
+ff8 := [Difference(i@@q1to62,BaseScheme(q1to62)): i in fixfibs];
+
+"improving the model by moving the nonreduced fibres to a better place";
+c3<z3> := CyclotomicField(3);
+P1c3 := ProjectiveSpace(c3,1);
+// Note that the rational root here is spurious; that fibre only becomes
+// triple on the bogus model in P^2 x P^1.  It's well-behaved in P^6.
+// On the other hand the two nonrational roots are genuinely nonreduced fibres.
+rts := [-12177365658055732137407888861795253190190992002603898992791/6186399324766379428417498033145018942956796563481277317792] cat [x[1]: x in Roots(Numerator(t^2 + 667053491557877178592194571876830589849486036790050846279859113559424342169718277579302323101025873818074681861286549/308334649051742682691304589489376915921322844949411928273935253686295252792824559920497112413659033836852359478375876*t + 2792324112720108867038623966797959998646716488524655346491841287133857001495603288637064758216622334137243214329519351/1233338596206970730765218357957507663685291379797647713095741014745181011171298239681988449654636135347409437913503504),c3)];
+tr1 := TranslationOfSimplex(P1c3,[P1c3(c3)![i]: i in rts]);
+tr2 := TranslationOfSimplex(P1c3,[P1c3(c3)![i]: i in [0,z3,1/z3]]);
+tr12 := tr1^-1*tr2;
+"improving the model and passing to the Jacobian";
+cht := hom<Qt->Qt|Evaluate(d[1]/d[2],[FunctionField(c3).1,1])> where d is DefiningPolynomials(tr12^-1);
+// this looks a lot more reasonable.
+chjac := Jacobian(BaseChange(cub,cht));
+chmm := MinimalModel(chjac);
+mdm := MinimalDegreeModel(chmm);
+rm := reduce_model(mdm);
+trm := QuadraticTwist(Image(map<rm->AmbientSpace(rm)|[rm.1-Roots(DivisionPolynomial(rm,2))[1,1]*rm.3,rm.2,rm.3]>),1/9);
+// y^2 = x^3 + (t^2 + 3)*x^2 + (2*t^2 + t + 1/8)*x
+
+// Also, I should just make sure that I know what the automorphism is doing
+// here, though as a practical matter there isn't much choice.
+
+"finding the j-invariant of the quotient";
+// to find the j-invariant on the quotient:
+e := (12-t)/(1+4*t);                                        
+j := jInvariant(trm);
+assert Evaluate(j,e) eq j;
+A1 := AffineSpace(Q,1);
+A2 := AffineSpace(Q,2);
+to2 := map<A1->A2|[Evaluate(i,FieldOfFractions(CoordinateRing(A1)).1): i in [e+t,jInvariant(trm)]]>;
+im2 := Image(to2);
+assert Degree(DefiningPolynomial(im2),2) eq 1;
+newj := Evaluate(-Coefficient(d,2,0)/Coefficient(d,2,1),[t,0]) where d is DefiningPolynomial(im2);
+newe := EllipticCurveWithjInvariant(newj);
+"unfortunately failing to match with anything";
+
+// And why is there a third fibre that is a triple line?  Two makes sense.
+
+/*
+ss := [[i,j]: i,j in [1..4]|i lt j];
+ls2s := [LinearSystem(P8,2): i in ss];
+for i in [1..4], j in [1..6] do
+  ls2s[j] := LinearSystem(ls2s[j],(i in ss[j] select l2s else lines)[i]);
+end for;
+ls2s := [LinearSystemTrace(l,q1in8): l in ls2s];
+q1to12s := [map<q1in8->P12|Sections(l)>: l in ls2s];
+degs := [{*2^^38,3^^i*}: i in [24,29,29,28,25,32]];
+ims := [];
+for i in [1..6] do Append(~ims,try_image(q1to12s[i],degs[i],3:verbose)); end for;
+*/
+
+// these are all surfaces of degree 28 in P^12 with 4 rational singular points.
+// When we project down to P^8 we get degree 20.  But apparently they are
+// subtly different.
+
+// Nevertheless, the multiples of the canonical have 0, 0, 2 sections
+// (I tried this on the second one reduced mod p), and the fibres
+// have degree 12 in P^8, which sounds like it might not be out of the
+// question to find the general fibre and its 3-section (see above).
+// Of course, first I'd have to find the rational singular points,
+// but it seems doable.  (The first one was a bit slower.)
+// It looks like the first 3 sets of quadratic equations will get rid of
+// the base locus, and again I might be able to interpolate them.
+
+// not sure how much it matters which surface we use
+/*
+for i in [1..6] do
+  for p in PrimesInInterval(20,100) do try
+      ip := ChangeRing(ims[i],GF(p));
+      ptsip := RationalPoints(ip);
+      sptsip := [x: x in ptsip|IsSingular(x)];
+      assert #sptsip eq 4;
+      ls1 := LinearSystem(AmbientSpace(ip),1);
+      for i in sptsip do ls1 := LinearSystem(ls1,i); end for;
+      P8p := ProjectiveSpace(GF(p),8);
+      cp := Cputime();                                                  
+      // time in8p,to8p := map_lin(ip,Sections(ls1));
+      to8p := map<ip->P8p|Sections(ls1)>;
+      time in8p := try_image(to8p,{*2^^8,3^^22*},3:verbose);
+      time assert IsPrime(Ideal(in8p));
+      time k8p := CanonicalSheaf(in8p);
+      time k8p2 := TensorProduct(k8p,k8p:Maximize);
+      time k8p3 := TensorProduct(k8p,k8p2:Maximize);
+      pts8p := {@to8p(i): i in ptsip|i notin sptsip@};
+      time dmp3 := DivisorMap(k8p3);
+      time eqs2 := interpolate_map(dmp3,2,{@pts8p[i]: i in RandomSubset({1..#pts8p},500)@}:silent);
+      "done surface", i, "at prime", p, "in", Cputime(cp), "seconds";
+      continue i;
+    catch e; end try;
+  end for;
+end for;
+*/
+
+/*
+n := 2;
+sptsn := [**];
+for p in PrimesInInterval(20,100) do
+  try
+    imnp := ChangeRing(ims[n],GF(p));
+    ptsnp := RationalPoints(imnp);
+    sptsnp := [x: x in ptsnp|IsSingular(x)];
+    assert #sptsnp eq 4;
+    Append(~sptsn,sptsnp);
+    "done", p;
+  catch e p, "failed";
+  end try;
+end for;*/
+
+/*spts1 := [ims[1]|[0,1,61,16,4,1,0,0,0,0,0,0,0],[294,70609/3072,160333/3072,4597/192,6097/768,-47/3072,13/2,3,1,0,0,0,0],[-540/17,-13595/136,-82753/952,-5743/119,-1917/238,11071/952,-29825/1428,-3620/357,-725/357,2155/1428,332/51,-11/3,1],[66540/19,31755/152,3752423/7448,207573/931,153067/1862,86199/7448,84845/1596,65420/2793,1325/147,16535/11172,364/57,-179/57,1]];
+
+spts2 := [ims[2]|[4,1,0^^11],[2846312/47,466970/47,79919/47,39347/47,18608/47,6332/47,1,0,0,0,0,0,0],[13963138/2925,4701893/11700,157633/1560,8295667/23400,133292/2925,11137/650,51871/23400,18871/585,-14/65,69188/2925,-69041/5850,8683/975,1],[2428738/405,555868/945,76012/567,357256/945,17356/315,58538/2835,2308/945,2630/81,-20/63,1102/45,-542/45,406/45,1]];
+
+spts3 := [ims[3]|[1,0^^12],[356083/512,70609/3072,160333/3072,4597/192,6097/768,-47/3072,13/2,3,1,0,0,0,0],[71460749/840,1195517/504,21747043/2520,1137968/315,345446/315,3877/360,22546/21,6155/14,1553/12,2156/45,-4097/90,181/15,1],[143392617/3220,662884/483,2651971/690,573284/345,1257761/2415,23431/4830,76836/161,32595/161,19893/322,8246/345,-4276/345,896/115,1]];
+
+spts4 := [ims[4]|[0,1,61,16,4,1,0,0,0,0,0,0,0],[1225/2,49,65,30,10,0,13/2,3,1,0,0,0,0],[660002/957,-64043/638,5831/58,-33772/957,-3812/319,-1901/1914,13382/957,-940/319,-940/957,8638/957,-13034/957,2554/319,1],[124600/33,15001/88,34005/88,1768/33,503/22,1835/264,886/33,-56/11,-56/33,1316/33,-665/66,111/11,1]];
+//and so on.
+
+sptss := [spts1,spts2,spts3,spts4];
+
+n := 4; // i.e., points 2 and 3
+assert forall{x: x in sptss[n]|IsSingular(ims[n]!x)};
+ls1 := LinearSystem(P12,1);
+for i in sptss[n] do
+  ls1 := LinearSystem(ls1,i);
+end for;
+into8 := map<ims[n]->P8|Sections(ls1)>;
+im8 := try_image(into8,{*2^^8,3^^22*},3:verbose);
+into8 := map<ims[n]->P8|Sections(ls1)>;*/
+
+// now can we write down the tricanonical map?  Probably not (though it
+// would be nice, since we'd get it as a graph map).  So, reduce mod p ....
+// But there is a problem here.  How do we know that we always get the
+// same map, rather than scrambled?  We have two I4 fibres, but everything
+// else interesting is not necessarily rational.  Maybe the points where
+// j = 0 or 1728?  But those aren't rational either.  Maybe there are
+// rational points to guide us?
+
+// One way would be to keep track of where the singular points (each of which
+// blows up to a conic which is an I4 component) goes.  That fixes two points,
+// but what about a third one?
+
+// The 3-section is an elliptic curve, and it turns out to have 6 torsion
+// points.  Can we be so lucky?  Yes!  There are two pairs that map to the
+// I4 fibres, but there are also two points that don't, and so we can
+// use this to pin them down.
+
+/*c9_12 := q1to12s[n](q1in8 meet c9);
+c9_8 := into8(ims[n] meet c9_12);
+rl_c9_8,torl := RemoveLinearRelations(c9_8);
+ec9,ecto := EllipticCurve(rl_c9_8,rl_c9_8![0,0,0,1]);
+tor,torto := TorsionSubgroup(ec9);
+torpts := [torto(i): i in tor];
+rlpts := [RationalPoints(Difference(i@@ecto,BaseScheme(ecto)))[1]: i in torpts];
+// conveniently the first two go to the two I4s
+c9pts := [i@@torl: i in rlpts];
+
+"writing down the tricanonical maps mod p";
+can3s := [**];
+for p in PrimesInInterval(20,100) do try
+    im8p := ChangeRing(im8,GF(p));
+    pts8p := RationalPoints(im8p);
+    k8p := CanonicalSheaf(im8p);
+    time k8p2 := TensorProduct(k8p,k8p:Maximize);
+    time k8p3 := TensorProduct(k8p,k8p2:Maximize);
+    // time k8p3 := TensorPower(k8p,3:Maximize); // seems a bit faster
+    dmp := DivisorMap(k8p3);
+    P1p := Codomain(dmp);
+    ptsub := RandomSubset(Set(pts8p),Min(500,#pts8p));
+    c9ptsp := [im8p|[GF(p)!i: i in Eltseq(pt)]: pt in c9pts[1..3]];
+    assert forall{x: x in [1,2]|#PrimaryComponents((dmp(c9ptsp[x]))@@dmp) gt 1};
+    trp := TranslationOfSimplex(P1p,[P1p(GF(p))|dmp(i): i in c9ptsp]);
+    time eq2s := interpolate_map(dmp*trp^-1,2,ptsub);
+    assert #eq2s eq 13;
+    // in fact just the first 3 will be enough
+    assert IsEmpty(Scheme(im8p,&cat eq2s));
+    Append(~can3s,map<im8p->Codomain(dmp)|eq2s>);
+    "done", p;
+  catch e p, "failed";
+  end try;
+end for;
+*/  
+// can we actually work with the quotient even in characteristic p?
+// We have a divisor of degree 3 from c9_8.  But it may be hard to work with.
+// We may also have lower-degree divisors from the coordinates
+// (e.g., on ims[1], the last coordinate breaks into two deg-6 divisors)
+// If we insist on sticking to the full quotient,
+// it seems that the curves we get are of degree 32 in this P^8 model.
+// No, 24; we have to get rid of the components supported on the lines.
+/*
+pts62 := [RationalPoints(i): i in allfibs[6..8]]; // to have some that split
+pts8 := [{@x: x in RationalPoints(i@@qto62p), i in p|x notin BaseScheme(qto62p)@}: p in pts62];
+pts12 := [{@x: x in RationalPoints(i@@qto8p), i in p|x notin BaseScheme(qto8p)@}: p in pts8];
+pts6 := [{@x: x in RationalPoints(i@@qto12p), i in p|x notin BaseScheme(qto12p)@}: p in pts12];
+
+pts1_12 := [{@x: x in RationalPoints(i@@q1toqp,ext<F|2>), i in p|x notin BaseScheme(q1toqp)@}: p in pts6];
+pts1_8 := [{@q1to8p(i): i in p@}: p in pts1_12];
+P8p := AmbientSpace(q1in8p);
+lss := [LinearSystem(P8p,i): i in [1..4]];
+mats := [*Matrix([[Evaluate(i,Eltseq(j)): i in Sections(l)]: j in pts1_8[1]]): l in lss*];
+kers := [Kernel(Transpose(i)): i in mats];
+eqs := [&+[F!((kers[i].j)[n])*lss[i].n: n in [1..#Sections(lss[i])]]: j in [1..Dimension(kers[i])], i in [1..4]];
+foo := Scheme(P8p,eqs);
+for i in [1..3] do
+  time foo := ProjectiveClosure(Scheme(AmbientSpace(a),Ideal(a))) where a is AffinePatch(foo,i);
+end for;
+assert ArithmeticGenus(foo) eq 1 and Degree(foo) eq 48;
+
+// it looks like the lines are all 6-sections of the fibration here.
+// However, there seems to be a curve of degree 9 in P8.6 = 0 that is a
+// 3-section, in which case we should be able to understand the fibration?
+
+// Unfortunately we can't yet use the canonical, because this model is
+// too messed up.
+
+// Can we really afford to go up to P^24?
+ls2 := LinearSystem(P8,2);
+for i in lines do ls2 := LinearSystem(ls2,i); end for;
+ls2 := LinearSystemTrace(ls2,q1in8);
+P24 := ProjectiveSpace(Q,24);
+q1to24 := map<q1in8->P24|Sections(ls2)>;
+q1in24 := try_image(q1to24,{*2^^220*},2:verbose);
+// degree 56 in P^24?
+*/

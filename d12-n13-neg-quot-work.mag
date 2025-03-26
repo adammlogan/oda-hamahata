@@ -1,0 +1,378 @@
+load "d12-n13.mag";
+load "k3pic.mag";
+load "project.mag";
+load "infnear.mag";
+// Note that this is the negative quotient.  We should also look at the
+// positive one.
+
+// Presumably as below we could project away from the cusp, the singular
+// line, and then the rational points.
+
+"mapping the negative component to P^17";
+ls3 := LinearSystem(A2,3);
+P17 := ProjectiveSpace(F,17);
+to17 := map<s2->P17|Sections(ls3)>;
+rats := {@a/b: a in [-10..10], b in [1..10]@};
+emp := EmptySubscheme(P17);
+repeat
+  emp join:= to17(Scheme(s2,[A2.1-Random(rats)*A2.3])); 
+  d3 := [x: x in DefiningPolynomials(emp)|Degree(x) le 3];
+  {*Degree(i): i in d3*};
+until {*Degree(i): i in d3*} eq {*2^^99,3^^28*};
+// do we really need this?
+in17 := Scheme(P17,d3);
+assert Dimension(in17) eq 2 and Degree(in17) eq 40;
+cusps := [in17|[1,1,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0],[19307236,114244,0,676,0,0,0,0,4,0,0,0,0,0,0,0,0,1]];
+assert forall{c: c in cusps|IsSingular(c)};
+
+// points defined over Q(sqrt -3)
+// presumably two of these are [3;1,1] and two are [12;1,5].  Neither one
+// would be canonical.
+ell1 := Scheme(in17,Append([P17.i: i in [1..16]],P17.17^2+20/13*P17.17*P17.18+16/13*P17.18^2));
+ell2 := Scheme(in17,[p.17^2 + 28/61*p.17*p.18 + 4/61*p.18^2,p.1 + 4028832*p.17 + 1088640*p.18,p.2 - 203040*p.17 - 76032*p.18,p.3 - 463104*p.17 - 33408*p.18,p.4 + 2592*p.17 + 3456*p.18,p.5 + 56448*p.17 + 10368*p.18,p.6 - 90240*p.17 - 33792*p.18,p.7 + 72*p.17 + 96*p.18,p.8 + 18*p.17 + 24*p.18,p.9 + 864*p.17,p.10 - 4608*p.17 - 1152*p.18,p.11 + 1152*p.17 + 1536*p.18,p.12 + 24*p.17,p.13 + 6*p.17,p.14 + 25088*p.17 + 4608*p.18,p.15 - 128*p.17 - 32*p.18,p.16 - 32*p.17 - 8*p.18]) where p is P17;
+// points defined over Q(i)
+// these should be canonical, so it seems less urgent to project away from them.
+ell3 := Scheme(in17,[p.17^2 + p.17*p.18 + 13/50*p.18^2,p.1,p.2,p.3,p.4,p.5,p.6,p.7 - 3232*p.17 - 7632/5*p.18,p.8 + 148*p.17 + 96*p.18,p.9,p.10,p.11,p.12 + 224*p.17 + 624/5*p.18,p.13 + 4*p.17,p.14,p.15 + 32*p.17 - 48/5*p.18,p.16 - 20*p.17 - 48/5*p.18]) where p is P17;
+ell4 := Scheme(in17,[p.17^2 + 24/13*p.17*p.18 + 16/13*p.18^2,p.1 + 5662656*p.17 + 2861568*p.18,p.2 - 105408*p.17 - 414720*p.18,p.3 + 238464*p.17 - 140544*p.18,p.4 - 39744*p.17 - 41472*p.18,p.5 - 34560*p.17 - 52992*p.18,p.6 - 11712*p.17 - 46080*p.18,p.7 + 720*p.17 + 1104*p.18,p.8,p.9 - 1728*p.17,p.10 - 3456*p.17 - 2304*p.18,p.11 - 4416*p.17 - 4608*p.18,p.12 + 72*p.17 + 48*p.18,p.13,p.14 - 3840*p.17 - 5888*p.18,p.15 + 92*p.17 + 96*p.18,p.16]) where p is P17;
+
+ells := [ell1,ell2,ell3,ell4];
+assert forall{p: p in PointsOverSplittingField(e), e in ells|IsSingular(in17(Parent(p[1]))!Eltseq(p))};
+"passing to the Atkin-Lehner quotient";
+ls1 := LinearSystem(P17,1);
+lins := [PolynomialMap(ls1)(i): i in Basis(Kernel(mat2-1))];
+linaut := map<P17->P17|[PolynomialMap(ls1)(i): i in Rows(mat2)]>;
+P9 := ProjectiveSpace(F,9);
+qminus := map<P17->P9|lins>;
+assert linaut*qminus eq qminus;
+assert in17@@linaut eq in17; // 8 seconds
+
+emp := EmptySubscheme(P9);
+repeat
+  emp join:= qminus(Scheme(in17,[P17.i-Random(rats)*P17.18: i in [16,17]]));
+  d3 := [x: x in DefiningPolynomials(emp)|Degree(x) le 3];
+until {*Degree(i): i in d3*} eq {*2^^18,3^^12*};
+
+"finding images of elliptic points and cusps";
+in9 := Scheme(P9,d3);
+assert Dimension(in9) eq 2 and Degree(in9) eq 20;
+qminus := map<in17->in9|lins>;
+ells9 := [qminus(i): i in ells];
+assert forall{x: x in ells9|Degree(x) eq 1};
+cusp9 := qminus(cusps[1]);
+assert cusp9 eq qminus(cusps[2]);
+
+// now, in order, we project away from the cusp, the singular line we get,
+// and the first two of the elliptic points.
+
+"projecting away from the cusp";
+in8,to8 := project(in9,cusp9);
+assert Degree(in8) eq 18;
+ells8 := [to8(i): i in ells9];
+P8 := AmbientSpace(in8);
+sline := rep{x: x in PrimeComponents(Scheme(in8,[in8.i: i in [6,8,9]]))|Degree(x) eq 1};
+assert IsSingular(in8(Parent(g[1]))!Eltseq(g)) where g is GenericPoint(sline);
+
+"projecting away from a singular line";
+in6,to6 := map_lin(in8,DefiningPolynomials(sline));
+assert Degree(in6) eq 12;
+P6 := AmbientSpace(in6);
+ells6 := [to6(i): i in ells8];
+
+"projecting away from two elliptic points";
+ls1 := LinearSystem(P6,1);
+for i in [1,2] do ls1 := LinearSystem(ls1,ells6[i]); end for;
+in4,to4 := map_lin(in6,Sections(ls1));
+P4 := AmbientSpace(in4);
+assert Degree(in4) eq 7;
+// this should be a K3 with an exceptional curve
+// So it should contract to a K3 in P^5, and it does.
+ed := rep{x: x in PrimeComponents(Scheme(in4,[P4.4,P4.5]))|Dimension(x) eq 1};
+assert selfint(in4,ed) eq -1;
+ells4 := [to4(i): i in ells6];
+assert [Degree(i): i in ells4] eq [0,0,1,1];
+
+"using canonical sheaf machinery to make a K3 model";
+in4 := Surface(P4,Ideal(in4));
+// This can also obtained by taking a residual to the line in a hyperplane
+// and considering quadrics that vanish on the residual mod those vanishing
+// on in4.
+tok3 := MinimalModelKodairaDimensionZero(in4);
+k3 := Image(tok3);
+// we should be able to get some rational points here from the cusp resolutions
+// but is it really helpful to work with this surface rather than just knowing
+// that it is a K3?
+
+// OK, for some bizarre reason Magma decides that the surface is actually
+// nonsingular.  We know better.
+P5 := ProjectiveSpace(Q,5);
+k3 := Surface(P5,DefiningPolynomials(k3));
+ssk3 := SingularSubscheme(k3);
+pcssk3 := PrimaryComponents(ssk3);
+
+// we have 11 A1 singularities, three rational, two pairs over Q(sqrt 13),
+// and four over an extension of Q(sqrt 13) ramified at one prime of
+// norm 3.
+
+// Can we find the Picard group of this surface and get some idea of how
+// it might be related to an elliptic curve over Q(zeta_12) of conductor
+// p_13 or something like that?
+
+"finding a genus-1 fibration";
+P1 := ProjectiveSpace(Q,1);
+Qt<t> := FunctionField(Q);
+P1t := ProjectiveSpace(Qt,1);
+k3t := ChangeRing(k3,Qt);
+ls1 := LinearSystem(P5,[x: x in DefiningPolynomials(pcssk3[1])|Degree(x) eq 1]);
+to1t := map<k3t->P1t|Sections(ls1)>;
+gft := Curve(Difference((P1t![t,1])@@to1t,BaseScheme(to1t)));
+// this is a curve of degree 5 and arithmetic genus 1.  So we should be
+// able to make it into an elliptic curve, especially since we have a degree-4
+// divisor coming from those singular points.
+/* d1 := Divisor(gft,Ideal(Scheme(gft,gft.1)));                         
+d2 := Divisor(gft,Ideal(Scheme(gft,DefiningPolynomials(pcssk3[1]))));
+deg1 := d1-d2;
+rr,m := RiemannRochSpace(deg1);
+fn := m(rr.1);
+df := Divisor(gft,fn);
+res := df+d1-d2;
+rpt := gft!RationalPoints(Scheme(gft,Ideal(res)));
+*/
+// oops, we just recover one of the singular points.
+"producing the Jacobian of the general fibre";
+pt := gft!Eltseq(rep{x: x in RationalPoints(p), p in pcssk3|Degree(p) eq 1 and forall{e: e in DefiningPolynomials(gft)|Evaluate(e,Eltseq(x)) eq 0}});
+//ect,ecto := EllipticCurve(gft,gft!pt);
+
+gf4,to4 := project(gft,pt);
+pt4 := map_inf_near(gft,pt,to4);
+
+gf3,to3 := project(gf4,pt4);
+pt3 := map_inf_near(gf4,pt4,to3);
+
+gf2,to2 := RemoveLinearRelations(gf3);
+pt2 := to2(pt3);
+// ect,ecto := EllipticCurve(gf2,pt2);
+// not a good sign--we have 4A1 III A3, so the rank is huge.
+
+// We can also get 5A1 D4 by taking the two degree-2 pairs.
+// Maybe should just make a collection of curves ....
+"making a collection of curves over a larger field";
+ei := EliminationIdeal(Ideal(pcssk3[1]),{5,6});
+nf4 := OptimizedRepresentation(ext<Q|Polynomial(Coefficients(Basis(ei)[1]))>);
+nf8 := SplittingField(nf4);
+k3nf := ChangeRing(k3,nf8);
+nf8u<u> := FunctionField(nf8);
+k3nfu := ChangeRing(k3nf,nf8u);
+P5nfu := AmbientSpace(k3nfu);
+P1nfu := ProjectiveSpace(nf8u,1);
+sptsnf := &join [RationalPoints(Scheme(k3nf,DefiningPolynomials(i))): i in pcssk3];
+P5nf := AmbientSpace(k3nf);
+tcs := [Scheme(P5nf,[&+[k3nf.i*Evaluate(Derivative(e,i),Eltseq(p)): i in [1..6]]: e in DefiningPolynomials(k3nf)]): p in sptsnf];
+
+// or 7A1 A3 from components 2, 4, 5 ....
+curves := {@@};
+/*gfs := [];
+for s in Subsets({1..11},4) do
+  ls1 := LinearSystem(P5nf,1);
+  for i in s do
+    ls1 := LinearSystem(ls1,sptsnf[i]);
+  end for;
+  if #Sections(ls1) eq 2 then
+    to1u := map<k3nfu->P1nfu|Sections(ls1)>;
+    gfu := Difference((P1nfu![u,1])@@to1u,BaseScheme(to1u));
+    ls1 := LinearSystem(P5nfu,1);
+    for i in sptsnf do
+      if P5nfu!Eltseq(i) in gfu and IsSingular(gfu!Eltseq(i)) then
+        ls1 := LinearSystem(ls1,P5nfu!Eltseq(i));
+      end if;
+    end for;
+    gfru := map_lin(gfu,Sections(ls1));
+    Append(~gfs,<gfru,s>);
+  end if;
+  printf ".";
+end for;*/
+
+// well, maybe we should start by making a nicer model.
+"improving the model";
+jac2 := Jacobian(gf2);
+mm2 := MinimalModel(jac2);
+
+is_star := func<x|s[#s] eq "*" where s is Sprintf("%o",x)>;
+mymm := EllipticCurveWithjInvariant(jInvariant(mm2));
+qt1 := &*[Numerator(Qt!Minimum(i[1])): i in LocalInformation(e), e in [mm2,mymm]|is_star(i[5])];
+mymm2 := MinimalModel(QuadraticTwist(mymm,qt1));
+_,qt := IsQuadraticTwist(mymm2,mm2);
+qt := Q!qt;
+sfn,sqn := Squarefree(Numerator(qt));
+sfd,sqd := Squarefree(Denominator(qt));
+mytw := QuadraticTwist(mymm2,sfn/sfd);
+assert IsIsomorphic(mytw,mm2);
+wm,wmto := WeierstrassModel(mytw);
+
+hc := HyperellipticCurve(Numerator(&*[Qt|Minimum(i[1]): i in LocalInformation(mytw)]));
+im := SimplifiedModel(ReducedModel(MinimalWeierstrassModel(ReducedModel(IntegralModel(hc)))));
+_,match := IsIsomorphic(hc,im);
+mych := MinimalModel(BaseChange(mytw,hom<Qt->Qt|Evaluate(d[1]/d[3],[t,0,1])>)) where d is InverseDefiningPolynomials(match);
+// we can do much better than that, though
+nj := EllipticCurveWithjInvariant(jInvariant(mych));
+factors := {@Qt!Minimum(i[1]): i in LocalInformation(e), e in [mych,nj]|#[e: e in [mych,nj]|is_star(LocalInformation(e,i[1])[5])] eq 1@};
+for i in factors do
+  if i eq 1/t then continue; end if;
+  tws := [QuadraticTwist(nj,i^s): s in [1,-1]];
+  _,ind := Minimum([#Sprintf("%o",e): e in tws]);
+  nj := tws[ind];
+end for;
+_,qt := IsQuadraticTwist(mych,nj);
+qt := Q!qt;
+sfn,sqn := Squarefree(Numerator(qt));
+sfd,sqd := Squarefree(Denominator(qt));
+twnj := QuadraticTwist(nj,sfn/sfd);
+assert IsIsomorphic(twnj,mych);
+// this will be painful to find a nice model for.  Can we translate it?
+/* Q5<a,b,c,d,e> := FunctionField(Q,5);
+A5 := Spec(Parent(Numerator(a)));
+Q5v<v> := FunctionField(Q5);
+tw5 := ChangeRing(twnj,Q5v);
+tr := Image(map<tw5->AmbientSpace(tw5)|[tw5.1+Polynomial([a,b,c,d,e])*tw5.3,\
+tw5.2,tw5.3]>);
+*/
+// and by looking at the coefficients and making them vanish:
+pol := Polynomial([13/24,23/6,7/6,7/3,1]);
+tr := map<twnj->AmbientSpace(twnj)|[twnj.1-pol*twnj.3,twnj.2,twnj.3]>;
+twtr := Image(tr);
+// and the degrees are much lower now.  We could use the polynomial to
+// try to find sections.  But with this nice model we might not need to.
+
+"finding a good projective model";
+P21 := ProductProjectiveSpace(Q,[2,1]);
+h := hom<CoordinateRing(AmbientSpace(twtr))->c|hom<Qt->c|c.4/c.5>,c.1,c.2,c.3> where c is FieldOfFractions(CoordinateRing(P21));
+in21 := Surface(P21,Numerator(h(DefiningPolynomial(twtr))));
+in5,to5 := SegreEmbedding(in21);
+P5 := AmbientSpace(in5);
+
+P3 := ProjectiveSpace(Q,3);
+to3 := map<in5->P3|[P5.i: i in [2,4,5,6]]>;
+in3 := Image(to3);
+to3 := map<in5->in3|[P5.i: i in [2,4,5,6]]>;
+
+ls2 := LinearSystem(P3,2);
+ls2 := LinearSystem(ls2,Scheme(P3,[P3.i: i in [3,4]]));
+P6 := ProjectiveSpace(Q,6);
+to6 := map<in3->P6|Sections(ls2)>;
+in6 := Image(to6);
+to6 := map<in3->in6|Sections(ls2)>;
+
+P4 := ProjectiveSpace(Q,4);
+to4 := map<in6->P4|[P6.i: i in [3..7]]>;
+in4 := Image(to4);
+to4 := map<in6->in4|[P6.i: i in [3..7]]>;
+
+ss4 := SingularSubscheme(in4);
+pcss4 := PrimeComponents(ss4);
+ls2 := LinearSystem(P4,2);
+for i in pcss4 do
+  ls2 := LinearSystem(ls2,i);
+end for;
+ls2 := LinearSystemTrace(ls2,in4);
+to52 := map<in4->P5|Sections(ls2)>;
+in52 := Image(to52);
+to52 := map<in4->in52|Sections(ls2)>;
+
+to42 := map<in52->P4|[P5.i: i in [1,2,4,5,6]]>;
+in42 := Image(to42);
+to42 := map<in52->in42|[P5.i: i in [1,2,4,5,6]]>;
+
+to32 := map<in42->P3|[P4.i: i in [1,2,3,5]]>;
+in32 := Image(to32);
+to32 := map<in42->in32|[P4.i: i in [1,2,3,5]]>;
+"found one in P^3, writing down the elliptic fibration there";
+// it's a K3 and the singularities are easy.
+// interesting ....
+
+// I'm sure the fibration is the map [P3.1,P3.3], but let's make sure
+dto32 := to5*to3*to6*to4*to52*to42*to32;
+fibs := [Scheme(in21,P21.4-i*P21.5): i in [5..10]];
+f32 := [dto32(i):i in fibs];
+// apparently not.
+
+in32t := ChangeRing(in32,Qt);
+fib := map<in32t->P1t|[P3.1+2*P3.2+7/3*P3.3,P3.3]>;
+gft := RemoveLinearRelations(Difference((P1t![t,1])@@fib,BaseScheme(fib)));
+jact := Jacobian(Curve(gft));
+assert IsIsomorphic(jact,twtr);
+
+"listing curves";
+in32u := ChangeRing(in32,nf8u);
+in32nf8 := ChangeRing(in32,nf8);
+P1nf8 := ProjectiveSpace(nf8,1);
+P1nf8u := ProjectiveSpace(nf8u,1);
+fibnf8 := map<in32nf8->P1nf8|DefiningPolynomials(fib)>;
+csnf8 := {@Curve(i): i in PrimeComponents(BaseScheme(fibnf8))@};
+li := LocalInformation(ChangeRing(jact,nf8u));
+for i in li do
+  if i[5] notin [KodairaSymbol(i): i in ["I1","II"]] then
+    afib := Difference((P1nf8!(m eq 1/u select [1,0] else [Roots(Numerator(m))[1,1]]) where m is nf8u!Minimum(i[1]))@@fibnf8,BaseScheme(fibnf8));
+    assert forall{c: c in PrimeComponents(afib)|Genus(Curve(c)) eq 0};
+    csnf8 join:= {@Curve(i): i in PrimeComponents(afib)@};
+  end if;
+end for;
+
+fibnf8_2 := map<in32nf8->P1nf8|[P3.1,P3.3]>;
+csnf8 join:= {@Curve(i): i in PrimeComponents(BaseScheme(fibnf8_2))@};
+fibnf8u_2 := map<in32u->P1nf8u|[P3.1,P3.3]>;
+gf2 := Difference((P1nf8u![u,1])@@fibnf8u_2,BaseScheme(fibnf8u_2));
+jac2 := Jacobian(Curve(RemoveLinearRelations(gf2)));
+li := LocalInformation(jac2);
+for i in li do
+  if i[5] notin [KodairaSymbol(i): i in ["I1","II"]] then
+    afib := Difference((P1nf8!(m eq 1/u select [1,0] else [Roots(Numerator(m))[1,1]]) where m is nf8u!Minimum(i[1]))@@fibnf8_2,BaseScheme(fibnf8_2));
+    assert forall{c: c in PrimeComponents(afib)|Genus(Curve(c)) eq 0};
+    csnf8 join:= {@Curve(i): i in PrimeComponents(afib)@};
+  end if;
+end for;
+
+nf16 := Compositum(nf8,QuadraticField(3));
+in32nf16 := ChangeRing(in32,nf16);
+P316 := AmbientSpace(in32nf16);
+csnf16 := {@Curve(P316,DefiningPolynomials(i)): i in csnf8@};
+
+"reducing mod p to describe the Picard lattice";
+F := GF(157);
+tof := hom<nf16->F|11>;
+Fv<v> := FunctionField(F);
+
+in3f := BaseChange(in32nf16,tof);
+P3f := AmbientSpace(in3f);
+csf := {@Curve(P3f,DefiningPolynomials(BaseChange(i,tof))): i in csnf16@};
+P1f := ProjectiveSpace(F,1);
+
+bls,sptsf,degsf := make_blowups(in3f);
+cpairs := {@i join j: i,j in csf|i ne j and forall{x: x in [i,j,i meet j]|Degree(x) eq 2}@};
+Fv := FunctionField(F);
+in3fv := ChangeRing(in3f,Fv);
+P1fv := ProjectiveSpace(Fv,1);
+to1s := [map<in3fv->P1fv|[x: x in DefiningPolynomials(c)|Degree(x) eq 2]>: c in cpairs];
+gfs := [Difference((P1fv![Fv.1,1])@@i,BaseScheme(i)): i in to1s];
+jacs := [Jacobian(Curve(i)): i in gfs];
+to1sf := [map<in3f->P1f|[x: x in DefiningPolynomials(c)|Degree(x) 
+eq 2]>: c in cpairs];
+csf join:= {@Curve(i): i in PrimeComponents(BaseScheme(t)), t in to1sf|Genus(Curve(i)) eq 0@};
+
+"found 18 independent curves";
+for i in [1..#to1s] do
+  li := LocalInformation(jacs[i]);
+  for l in li do
+    if l[5] in [KodairaSymbol("II"),KodairaSymbol("I1")] then continue; end if;
+    p1pt := P1f!(m eq 1/Fv.1 select [1,0] else [Roots(Numerator(m))[1,1]]) where m is Minimum(l[1]);
+    newc := {@Curve(c): c in PrimeComponents(p1pt@@to1sf[i])@};
+    assert forall{c: c in newc|Genus(c) eq 0};
+    csf join:= newc;
+  end for;
+  printf "%o ", #csf;
+end for;
+mat,hypvec := picmat(in3f,bls,sptsf,degsf,csf:silent);
+assert Rank(mat) eq 18;
+
+// That's what we want--rank 18.
+Z75,Z18,to18,cls := reduce_mat(mat);
+hyp := to18(hypvec);
+"found the Picard lattice, but what do we do from here?";

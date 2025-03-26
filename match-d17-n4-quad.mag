@@ -1,0 +1,122 @@
+load "project.mag";
+load "../shtukas/all_kum_fib.mag";
+kum5r := ChangeRing(kum5,Fr);
+P1r := ProjectiveSpace(Fr,1);
+"writing down the D8D4D4 fibrations";
+d8d4d4s := [map<kum5r->P1r|DefiningPolynomials(i)>: i in all_fibs[6]];
+gfs := [];
+for i in d8d4d4s do time Append(~gfs,Difference((P1r![r,1])@@i,BaseScheme(i))); end for;
+P4r := ProjectiveSpace(Fr,4);
+gf4s := [];
+for i in gfs do
+  spt := rep{x: x in SingularPoints(kum5r)|x in i and IsSingular(i!x)};
+  Append(~gf4s,project(i,spt:amb := P4r));
+end for;
+
+gf2s := [];
+P2r := ProjectiveSpace(Fr,2);
+for i in gf4s do
+  c2 := rep{x: x in PrimeComponents(Scheme(i,P4r.j)), j in [1..5]|Degree(x) eq 2};
+  Append(~gf2s,map_lin(i,[x: x in DefiningPolynomials(c2)|Degree(x) eq 1]:amb := P2r));
+end for;
+
+"finding their Jacobians";
+jacs := [];
+P3r := ProjectiveSpace(Fr,3);
+for i in gf2s do
+  if Degree(i) eq 3 then
+    Append(~jacs,Jacobian(Curve(i)));
+  else
+    ss2 := SingularSubscheme(i);
+    ls2 := LinearSystem(P2r,2);
+    ls2 := LinearSystem(ls2,&join PrimeComponents(ss2));
+    if #Sections(ls2) eq 4 then
+      to3r := map<i->P3r|Sections(ls2)>;
+    else
+      to4r := map<i->P4r|Sections(ls2)>;
+      i4 := Image(to4r);
+      _,to3r := project(i4,SingularPoints(i4)[1]);
+    end if;
+    Append(~jacs,Jacobian(Curve(Image(to3r))));
+  end if;
+end for;
+
+"finding their minimal models and standardizing them";
+mms := [MinimalModel(i): i in jacs]; // 1 minute; one of them is slow
+// for convenience let's put the D4s at 0 and infinity and the D8 at 1.
+nms := [];
+for i in mms do
+  pts := [];
+  for j in Roots(Numerator(Discriminant(i))) do
+    if j[2] eq 6 then Append(~pts,P1![j[1]]);
+    end if;
+  end for;
+  if #pts eq 1 then Append(~pts,P1![1,0]); end if;
+  
+  for j in Roots(Numerator(Discriminant(i))) do
+    if j[2] eq 10 then Append(~pts,P1![j[1]]);
+    end if;
+  end for;
+  if #pts eq 2 then Append(~pts,P1![1,0]); end if;
+
+  assert #pts eq 3;
+  tr := TranslationOfSimplex(P1,pts);
+  ch := hom<Fr->Fr|Evaluate(d[1]/d[2],[r,1])> where d is DefiningPolynomials(tr);
+  Append(~nms,MinimalModel(BaseChange(i,ch))); printf ".";
+end for;
+
+"taking a base change to the desired E x E'";
+pols := [rep{x[1]: x in Factorization(Numerator(Discriminant(m)))|Degree(x[1]) eq 2 and x[2] eq 1}: m in nms];
+qf<r17> := QuadraticField(17);
+A2 := AffineSpace(qf,2);
+// from LocalInformation(nm) in d17-n4-quad.mag
+im := A2![1/71289*(8853600*r17 + 36659225),1/71289*(-563808*r17 - 2548882)]; 
+a2map := map<A2->A2|[Coefficient(pols[1],i): i in [0,1]]>;
+rp := [x: x in RationalPoints(im@@a2map)|0 notin Eltseq(x) and 1 notin Eltseq(x)]; 
+n2s := [&*s: s in Subsets({-1,4-r17,(3+r17)/2,(3-r17)/2})];
+es := [[EllipticCurve([0,-i-1,0,i,0]): i in Eltseq(p)]: p in rp];
+assert exists{r: r in es, n in n2s|forall{i: i in r|Norm(Conductor(QuadraticTwist(i,n))) eq 4}};
+
+// and so this is the desired elliptic surface.
+// as expected, it is Kummer(E x E') where E, E' are 6-isogenous.
+assert forall{e: e in es|Evaluate(ClassicalModularPolynomial(6),[jInvariant(i): i in es[1]]) eq 0};
+
+qfv<v> := FunctionField(qf);
+chv := hom<Fr->qfv|hom<F->qfv|Eltseq(rp[1])>,v>;
+chnm := BaseChange(nms[1],chv);
+ai_chnm := [
+0,
+1/4294967296*(1404459*r17 - 6011266851)*v^4 + 1/1073741824*(9759657341*r17 +
+47898929979)*v^3 + 1/2147483648*(-275784433519*r17 - 1164940446201)*v^2 
++ 1/1073741824*(134003271885*r17 + 563401060203)*v,
+0,
+1/9223372036854775808*(-2814192610096203*r17 + 6022560447752976963)*v^8 + 
+1/1152921504606846976*(-9766772094628787805*r17 - 
+47950038387518601051)*v^7 + 1/2305843009213693952*(824086545061478121507*r17 + 3464832143835862920741)*v^6 + 
+1/1152921504606846976*(-5769105769602210962619*r17 - 
+23868659370285090183117)*v^5 + 1/2305843009213693952*(38504842514867291008677*r17 + 159000042387482281545171)*v^4 + 
+1/576460752303423488*(-13437929635883697414519*r17 - 
+55456561232694020104369)*v^3 + 1/576460752303423488*(6548613238669161265893*r17 + 27020394528378218325907)*v^2,
+1/19807040628566084398385987584*(1409738998516176182630265*r17 - 
+2011293620490530587055690529)*v^12 + 
+1/4951760157141521099596496896*(9773888245125028549266010941*r17 + 
+48001214456098467391334846331)*v^11 + 
+1/9903520314283042199192993792*(-1373370962894662418783916735447*r17 - 
+5768996564750576296042887356241)*v^10 + 
+1/4951760157141521099596496896*(20302185353572615471892449508889*r17 + 
+83928176198084701030231698326847)*v^9 + 
+1/4951760157141521099596496896*(-266217302980799503473604238102909*r17 -
+1098246301831307905767200767133499)*v^8 + 
+1/77371252455336267181195264*(21132141032304888442336655153685*r17 + 
+87147969491988772497734285305059)*v^7 + 
+1/2475880078570760549798248448*(-1777594689156033362721808447180463*r17 
+- 7329966651191790327149974938953913)*v^6 + 
+1/1237940039285380274899124224*(1301883603593956648810547111917129*r17 +
+5368139243795931985802063407546767)*v^5 + 
+1/618970019642690137449562112*(-510686265816209567267568076097343*r17 - 
+2105705189598405932673922503445929)*v^4 + 
+1/309485009821345068724781056*(83108646466017366149110471725759*r17 + 
+342677690399162990336261348628009)*v^3
+];
+assert ai_chnm eq aInvariants(chnm);
+

@@ -1,0 +1,296 @@
+// trying again to match, but being careful this time about fields of definition
+"basic setup";
+F<a> := ext<Q|Polynomial([-4,-1,1])>;
+ai := [a + 1, -a, a + 1, 12*a - 37, 46*a - 121];
+ec := EllipticCurve(ai);
+wm := WeierstrassModel(ec);
+rts := Roots(DivisionPolynomial(wm,2));
+nwm := Image(map<wm->AmbientSpace(wm)|[wm.1-rts[1,1]*wm.3,wm.2,wm.3]>);
+rts := Roots(DivisionPolynomial(nwm,2));
+// I think this twist may be hurting us
+tw := QuadraticTwist(nwm,1/(117*a-297));
+
+p := (-5*a-4)/4; // rts[2,1]/rts[3,1];
+auts := Automorphisms(F);
+q := auts[2](p);
+assert IsIsomorphic(tw,EllipticCurve([0,-p-1,0,p,0]));
+Fr<r> := FunctionField(F);
+to_r_hom := hom<F->Fr|a>;
+load "../shtukas/all_kum_fib.mag";
+kum5r := ChangeRing(kum5,Fr);
+P1r := ChangeRing(P1,Fr);
+"setting up the Kummer in P^4 and writing down some fibrations";
+fs := all_fibs[3];
+fsr := [map<kum5r->P1r|DefiningPolynomials(f)> : f in fs];
+gfs := [Difference((P1r![r,1])@@f,BaseScheme(f)): f in fsr];
+sptsr := SingularPoints(kum5r);
+spts_sing := [[i: i in sptsr|i in g and IsSingular(g!i)]: g in gfs];
+spts_nonsing := [[i: i in sptsr|i in g]: g in gfs];
+jacs := [Jacobian(Curve(RemoveLinearRelations(i))): i in gfs];
+
+// not what we actually want
+to42 := map<ee->P4|[P22.1*P22.4,P22.1*P22.6+P22.3*P22.4,a*P22.1*P22.6+auts[2](a)*P22.3*P22.4,P22.3*P22.6,P22.2*P22.5]>;
+in42 := Image(to42);
+to42 := map<ee->in42|[P22.1*P22.4,P22.1*P22.6+P22.3*P22.4,a*P22.1*P22.6+auts[2](a)*P22.3*P22.4,P22.3*P22.6,P22.2*P22.5]>;
+in42q := ChangeRing(in42,Q);
+
+wm2 := BaseChange(wm,auts[2]);
+wmwm2 := Surface(P22,[Evaluate(DefiningPolynomial(wm),[P22.i: i in [1..3]]),Evaluate(DefiningPolynomial(wm2),[P22.i: i in [4..6]])]);
+to42w := map<wmwm2->P4|DefiningPolynomials(to42)>;
+in42w := Image(to42w);
+to42w := map<wmwm2->in42w|DefiningPolynomials(to42)>;
+in42wq := ChangeRing(in42w,Q);
+
+"making a rational model and some fibrations that go with it";
+rat_p4 := map<kum4->in42|[P4.1,P4.2+P4.3,a*P4.2+auts[2](a)*P4.3,P4.4,P4.5]>;
+assert IsInvertible(rat_p4); // not that it's hard to work it out myself
+fib_42s := [Expand(Inverse(rat_p4)*to5*i): i in fs];
+// three of these fibres are conjugate to other fibres of the same fibration,
+// so presumably it's one of those three that we need.
+
+afibs := [Difference((P1![a+3,1])@@i,BaseScheme(i)): i in fib_42s];
+chafibs := [Scheme(in42,DefiningPolynomials(BaseChange(i,auts[2]))): i in afibs];
+assert {x: x in [1..9]|Dimension(fib_42s[x](chafibs[x])) eq 0} eq {1,2,7};
+
+// but to make this work, we will have to enlarge the Picard group by taking
+// the Jacobian of a fibration that has sections but no rational sections.
+
+"writing down some curves and their intersection matrix";
+rhi := [rat_p4(i): i in hi];
+rvi := [rat_p4(i): i in vi];
+rlines := [rat_p4(i): i in lines];
+ss42 := SingularSubscheme(in42);
+pcss42 := PrimaryComponents(ss42);
+spts42 := [RationalPoints(i)[1]: i in pcss42];
+
+// generators: curves at the singular points, rhi, rvi
+mat24 := ScalarMatrix(Z,24,-2);
+// A3 singularity
+for i in [1,2] do mat24[i,i+1] := 1; mat24[i+1,i] := 1; end for;
+
+for i in [1..3] do
+  assert spts42[1] notin rhi[i+1] join rvi[i+1];
+  for j in [2..10] do
+    if spts42[j] in rhi[i+1] then
+      mat24[i+12,j+2] := 1; mat24[j+2,i+12] := 1;
+    end if;
+    if spts42[j] in rvi[i+1] then
+      mat24[i+15,j+2] := 1; mat24[j+2,i+15] := 1;
+    end if;
+  end for;
+end for;
+
+assert forall{i: i in [2..10], l in rlines|spts42[i] notin l};
+
+for i in [1..3], j in [1..6] do
+  if Degree(rhi[i+1] meet rlines[j]) eq 1 then
+    mat24[i+12,j+18] := 1; mat24[j+18,i+12] := 1;
+  end if;
+  if Degree(rvi[i+1] meet rlines[j]) eq 1 then
+    mat24[i+15,j+18] := 1; mat24[j+18,i+15] := 1;
+  end if;
+end for;
+
+pb,ed,prbl,prsec := blowup(in42,spts42[1]);
+pced := PrimaryComponents(ed);
+for i in [1..6] do
+  bll := excise(rlines[i]@@prbl,ed);
+  dpc := [Degree(bll meet i): i in pced];
+  assert &+dpc eq 1;
+  ind := rep{2*i-1: i in [1,2]|dpc[i] eq 1};
+  mat24[ind,i+18] := 1; mat24[i+18,ind] := 1;
+end for;
+
+assert Rank(mat24) eq 18;
+Z24,Z18,to18,cls := reduce_mat(mat24);
+hyp24 := Z24!Solution(mat24,Vector([0^^12,1^^12]));
+hyp := to18(hyp24);
+assert (hyp,hyp) eq 6;
+
+"writing down the Galois action";
+bc_aut := func<x|Scheme(AmbientSpace(x),DefiningPolynomials(BaseChange(x,auts[2])))>;
+gal24inds := [3,2,1] cat [Index(spts42,P4![auts[2](i): i in Eltseq(s)])+2: s in spts42[2..10]];
+hv := rhi[2..4] cat rvi[2..4];
+gal24inds cat:= [Index(hv,bc_aut(i))+12: i in hv];
+gal24inds cat:= [Index(rlines,bc_aut(i))+18: i in rlines];
+gal24 := hom<Z24->Z24|[Z24.i: i in gal24inds]>;
+galact := hom<Z18->Z18|[to18(gal24(i@@to18)): i in Basis(Z18)]>;
+galfix := Kernel(hom<Z18->Z18|[galact(i)-i: i in Basis(Z18)]>);
+
+"finding a fibration with sections but no rational sections";
+// one finds that hyp - &+[cls[i]: i in [8..12] cat [13,16]] is a
+// fibration with sections but no rational sections.
+ls1 := LinearSystem(P4,1);
+for i in [6..10] do ls1 := LinearSystem(ls1,P4!spts42[i]); end for;
+for i in [hv[1],hv[4]] do ls1 := LinearSystem(ls1,i); end for;
+to1 := Extend(map<in42->P1|Sections(ls1)>);
+in42r := ChangeRing(in42,Fr);
+to1r := map<in42r->P1r|AllDefiningPolynomials(to1)>;
+gfr := Curve((P1r![r,1])@@to1r);
+spts42r := SingularPoints(in42);
+hvlr := [Scheme(in42r,DefiningPolynomials(i)): i in hv cat lines];
+gfr_pts := {@x: x in spts42r|x in gfr@} join {@x: x in RationalPoints(i meet gfr), i in hvlr@} join {@x: x in RationalPoints(Scheme(gfr,gfr.i)), i in [1..5]@};
+ecr,ecrto := EllipticCurve(gfr,gfr_pts[1]);
+ecrpts := [map_inf_near(gfr,i,ecrto): i in gfr_pts];
+
+Qt<t> := FunctionField(Q);
+gft := ChangeRing(gfr,Qt);
+
+"writing down the general fibre and taking its Jacobian";
+d2 := Divisor(gft,Ideal(rep{c: c in PrimeComponents(Scheme(gft,gft.1))}));
+rr2,m2 := RiemannRochSpace(d2);
+d22 := 2*d2;
+rr4,m4 := RiemannRochSpace(d22);
+P2w := ProjectiveSpace(Qt,[1,2,1]);
+to2w := map<gft->P2w|[m2(rr2.1),m4(rr4.3),m2(rr2.2)]>;
+in2w := Image(to2w);
+assert IsNonsingular(in2w) and Degree(in2w) eq 4;
+
+jacr := Jacobian(RemoveLinearRelations(gfr));
+_,matchr := IsIsomorphic(ecr,jacr);
+jpts := [matchr(i): i in ecrpts];
+
+jacrt := QuadraticTwist(jacr,17*t^2); // the t^2 here was lost for a while
+_,mt := IsIsomorphic(jacr,jacrt);
+jtpts := [mt(i): i in jpts];
+
+tosmall := map<jacrt->AmbientSpace(jacrt)|[jacrt.1-Roots(DivisionPolynomial(jacrt,2))[1,1]*jacrt.3,jacrt.2,jacrt.3]>;
+jsmall := Image(tosmall);
+tosmall := map<jacrt->jsmall|DefiningPolynomials(tosmall)>;
+jspts := [tosmall(i): i in jtpts];
+// the same sort of beautifully small equation as before
+jact := Jacobian(in2w);
+assert IsIsomorphic(ChangeRing(jacr,Qt),jact);
+jtw := ChangeRing(jsmall,Qt);
+// could even twist by (29/51)^2 to make the equation a bit smaller
+
+// We know from previous calculations that it's fibration 7.
+// first try 1.  We find that Galois takes the fibre at x to that at 1/sigma(x),
+// so the fibres at +-1 are rational.
+"trying to match this fibration with another one";
+rf7 := [Scheme(in42q,DefiningPolynomials(Difference((P1![i,1])@@fib_42s[7],BaseScheme(fib_42s[7])))): i in [1,-1]];
+ress := [Difference(Scheme(in42q,c),rf7[1]): c in DefiningPolynomials(rf7[1])|Degree(c) eq 2 and c notin Ideal(in42q)];
+ls2 := LinearSystem(AmbientSpace(in42q),2);
+ls2s := [LinearSystemTrace(LinearSystem(ls2,res),in42q): res in ress];
+
+P1Q := ProjectiveSpace(Q,1);
+fib7q := reconcile([map<in42q->P1Q|Sections(ls2)>: ls2 in ls2s]);
+Qu<u> := FunctionField(Q);
+P1Qu := ProjectiveSpace(Qu,1);
+in42qu := ChangeRing(in42q,Qu);
+fib7qu := map<in42qu->P1Qu|AllDefiningPolynomials(fib7q)>;
+gf := Difference((P1Qu![u,1])@@fib7qu,BaseScheme(fib7qu));
+sptsq := SingularPoints(in42q);
+// no longer true
+// assert forall{x: x in sptsq|IsNonsingular(gf!Eltseq(x))}; 
+/*P4Qu := AmbientSpace(gf);
+ls1 := LinearSystem(P4Qu,1);
+for i in [1,2] do
+  ls1 := LinearSystem(ls1,P4Qu!Eltseq(sptsq[i]));
+end for;
+P2Qu := ProjectiveSpace(Qu,2);
+gf2 := Image(map<gf->P2Qu|Sections(ls1)>);
+jac := Jacobian(Curve(gf2));*/
+"finding and simplifying the Jacobian";
+jac := Jacobian(Curve(RemoveLinearRelations(gf)));
+// as expected
+c1 := MinimalModel(BaseChange(jac,hom<Qu->Qu|1/u>));
+c2 := BaseChange(c1,hom<Qu->Qu|u-16/33>);
+c3 := BaseChange(c2,hom<Qu->Qu|4*u/33>);
+wc3 := WeierstrassModel(c3);
+trw3 := Image(map<wc3->AmbientSpace(wc3)|[wc3.1-Roots(DivisionPolynomial(wc3,2))[1,1]*wc3.3,wc3.2,wc3.3]>);
+tw3 := QuadraticTwist(trw3,(363/16)^2);
+// we made a choice of twist by 17 when we descended to Q, and I don't think
+// that means anything.  But we are still off by t -> it from qt2 in
+// d17-n8-work.mag, and that I think is a real thing.
+
+// Apparently the twist is the problem.  In the other example we twisted by
+// 27*a+36, which is a square (and has square norm), so we didn't see it.
+// But here our twist by 117*a-297 of norm -36^2 twists the base change back
+// to Q by -1 and causes point counts not to match up.
+nwm2 := BaseChange(nwm,auts[2]);
+nwmnwm2 := Surface(P22,[Evaluate(DefiningPolynomial(nwm),[P22.i: i in [1..3]]),Evaluate(DefiningPolynomial(nwm2),[P22.i: i in [4..6]])]);
+to42nw := map<nwmnwm2->P4|DefiningPolynomials(to42)>;           
+in42nw := Image(to42nw);      
+in42nwq := ChangeRing(in42nw,Q);
+// so now we just have to write down the isomorphism between in42nw and in42
+// over F, carry the fibration back, and simplify it.  I think I know what's
+// going on.
+
+// Rather, the isomorphism is not over F, but some extension
+"writing down appropriate isomorphisms";
+f8 := ext<F|[Polynomial([-au(117*a-297),0,1]): au in auts]>;
+af8 := AbsoluteField(f8);
+es8 := [ChangeRing(i,af8): i in es];
+ws8 := [ChangeRing(i,af8): i in [wm,wm2]];
+nws8 := [ChangeRing(i,af8): i in [nwm,nwm2]];
+isoms := [x where _,x is IsIsomorphic(es8[i],ws8[i]): i in [1,2]];
+isomsn := [x where _,x is IsIsomorphic(es8[i],nws8[i]): i in [1,2]];
+ee8 := BaseChange(ee,hom<F->af8|af8!F.1>);
+ww8 := BaseChange(wmwm2,hom<F->af8|af8!F.1>);
+nwnw8 := BaseChange(nwmnwm2,hom<F->af8|af8!F.1>);
+// could make the inverse maps too
+isom_pair := map<ee8->ww8|&cat [[Evaluate(i,[ee8.j: j in [3*k-2..3*k]]): i in DefiningPolynomials(isoms[k])]: k in [1,2]]>;
+isom_pair_n := map<ee8->nwnw8|&cat [[Evaluate(i,[ee8.j: j in [3*k-2..3*k]]): i in DefiningPolynomials(isomsn[k])]: k in [1,2]]>;
+in42af8 := ChangeRing(in42,af8);
+in42waf8 := ChangeRing(in42w,af8);
+in42nwaf8 := ChangeRing(in42nw,af8);
+to42af8 := map<ee8->in42af8|DefiningPolynomials(to42)>;
+to42waf8 := map<ww8->in42waf8|DefiningPolynomials(to42)>;
+to42nwaf8 := map<nwnw8->in42nwaf8|DefiningPolynomials(to42)>;
+
+"applying them to points";
+pts := PointSearch(in42q,100);
+pts8 := [in42af8!Eltseq(i): i in pts];
+pairs := [];
+pairsn := [];
+for i in pts8 do try
+    iup := Difference(i@@to42af8,BaseScheme(to42af8));
+    assert Dimension(iup) eq 0 and Degree(iup) eq 2;
+    iupw := isom_pair(ee8 meet iup);
+    iupnw := isom_pair_n(ee8 meet iup);
+    iw := to42waf8(iupw);
+    inw := to42nwaf8(iupnw);
+    rps := [*RationalPoints(i): i in [iw,inw]*];
+    assert forall{x: x in rps|#x eq 1};
+    Append(~pairs,<in42af8!i,in42waf8!rps[1,1]>);
+    Append(~pairsn,<in42af8!i,in42nwaf8!rps[2,1]>);
+  catch e;
+  end try;
+end for;
+
+// I don't know why the second one doesn't work ....
+// l1 := map<in42af8->in42waf8|interpolate_from_pairs(in42af8,in42waf8,1,pairs)>;
+// assert IsInvertible(l1);
+"descending the fibrations";
+m1 := map<in42waf8->in42af8|interpolate_from_pairs(in42waf8,in42af8,1,[<x[2],x[1]>: x in pairs])>;
+// in fact this comes out to be defined over Q(i)
+Qi := QuadraticField(-1);
+Embed(Qi,af8,Roots(Polynomial([1,0,1]),f8)[1,1]);
+in42wi := ChangeRing(in42waf8,Qi);
+in42i := ChangeRing(in42af8,Qi);
+Fi := Compositum(F,Qi);
+in42wfi := ChangeRing(in42waf8,Fi);
+in42fi := ChangeRing(in42af8,Fi);
+m1fi := map<in42wfi->in42fi|DefiningPolynomials(m1)>;
+P1fi := ProjectiveSpace(Fi,1);
+fibfi := Expand(m1fi*map<in42fi->P1fi|DefiningPolynomials(fib_42s[7])>);
+autsfi := Automorphisms(Fi);
+// and now we can try to figure out where the fibres go
+// It's not hard to check that fibres at +-i are rational
+fi := Scheme(in42wq,DefiningPolynomials(Difference((P1fi![Qi.1,1])@@fibfi,BaseScheme(fibfi))));
+res := Difference(Scheme(in42wq,rep{p: p in DefiningPolynomials(fi)|Degree(p) eq 1}),fi);
+fibwq := Extend(map<in42wq->P1Q|[x: x in DefiningPolynomials(res)|Degree(x) eq 1]>);
+in42wqt := ChangeRing(in42wq,Qt);
+P1Qt := ProjectiveSpace(Qt,1);
+fibwqt := map<in42wqt->P1Qt|AllDefiningPolynomials(fibwq)>;
+"finding the correct generic fibre";
+gft := (P1Qt![t,1])@@fibwqt;
+jact := Jacobian(GenusOneModel(Curve(RemoveLinearRelations(gft))));
+// looks better
+bc := BaseChange(jact,hom<Qt->Qt|t/144>);
+"checking that it gives the same curve as in the other file";
+assert IsIsomorphic(QuadraticTwist(bc,17),EllipticCurve([0,u^4 + 13*u^2 + 16,0,4*u^4,0]));
+// and after twisting by 17 this is isomorphic to the curve
+// EllipticCurve([0,u^4 + 13*u^2 + 16,0,4*u^4,0])
+// that comes from d17-n8-work.mag.

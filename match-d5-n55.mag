@@ -1,0 +1,87 @@
+load "project.mag";
+// we will try to match a D6^2 A1^4 fibration.
+Qa<a>:= ext<Q|Polynomial([-1,-1,1])>;
+// here is our goal.
+r5 := 2*a-1;
+Qat5<t5> := FunctionField(Qa);
+"defining our goal";
+tmtdsm := EllipticCurve([
+0,
+1/160*(-405*r5 + 927),
+0,
+-27*t5^6 + 1/1040*(-147420*r5 - 595863)*t5^5 + 1/1081600*(-3071881800*r5 - 6695524503)*t5^4 + 1/14060800*(-324390687192*r5 - 679556930211)*t5^3 + 1/7311616000*(-791242749622728*r5 - 1822241243770137)*t5^2 + 1/47525504000*(-15305157407661615*r5 - 33968186569773009)*t5 + 1/197706096640000*(-84617127346980841704*r5 - 189466172799047823663),
+-54*t5^9 + 1/1040*(-442260*r5 - 1787589)*t5^8 + 1/1081600*(-12709752120*r5 - 29868298263)*t5^7 + 1/562432000*(-70472155972140*r5 - 149241138362271)*t5^6 + 1/3655808000*(-1965706037856405*r5 - 4368790002191157)*t5^5 + 1/7604080640000*(7803738349596504432*r5 + 16327971588608249643)*t5^4 + 1/197706096640000*(4690051034880236670216*r5 + 10549032756223808409885)*t5^3 + 1/102807170252800000*(12092345454333634994180196*r5 + 27008999914054374299657367)*t5^2 + 1/1336493213286400000*(351300541078982801771888202*r5 + 785709291987874663750954143)*t5 + 1/1389952941817856000000*(316395876985567672296569274072*r5 + 707450616489283906257798759621)]);
+li := LocalInformation(tmtdsm);
+P1 := ProjectiveSpace(Qa,1);
+pts1 := &cat [[P1!(i eq 1/t5 select [1,0] else [Roots(Numerator(i))[1,1]] where i is Qat5!Minimum(x[1])): x in li|x[5] eq KodairaSymbol(k)]: k in ["I2*","I2"]];
+tr1 := TranslationOfSimplex(P1,pts1[1..3]);
+  
+"choosing two curves of appropriate conductors";
+e4 := EllipticCurve([1,-a+1,1,-21*a-25,-54*a-58]);
+e6 := EllipticCurve([a+1,0,a+1,4*a-11,-9*a+13]);
+auta := hom<Qa->Qa|-1/a>;
+e4a := BaseChange(e4,auta);
+e6a := BaseChange(e6,auta);
+
+es := [e4,e6,e4a,e6a];
+ds := [[x[1]: x in Roots(DivisionPolynomial(e,2))]: e in es];
+
+pair1 := rep{[[r,s],[t,u]]: r,s in ds[1], t,u in ds[4]|r ne s and t ne u and IsSquare((s-r)*(u-t))};
+p := rep{(x-pair1[1,1])/(pair1[1,2]-pair1[1,1]): x in ds[1]|x notin pair1[1]};
+q := rep{(x-pair1[2,1])/(pair1[2,2]-pair1[2,1]): x in ds[4]|x notin pair1[2]};
+
+et1 := EllipticCurve([0,-p-1,0,p,0]);
+et2 := EllipticCurve([0,-q-1,0,q,0]);
+_,tw1 := IsQuadraticTwist(et1,e4);
+_,tw2 := IsQuadraticTwist(et2,e6a);
+assert IsSquare(tw1*tw2);
+
+// Kummer of et1 x et2 is isomorphic to that of e4 x e6a, since the product
+// of the twists is a square
+
+F := Qa;
+Fr<r> := FunctionField(F);
+to_r_hom := hom<F->Fr|a>;
+"loading information about elliptic fibrations on Kum(E x E')";
+load "../shtukas/all_kum_fib.mag";
+
+"specializing the ones with two D6 and four A1 fibres";
+kum5r := ChangeRing(kum5,Fr);
+P1r := ProjectiveSpace(Fr,1);
+adfibs := [map<kum5r->P1r|DefiningPolynomials(i)>: i in all_fibs[5]];
+gfrs := [(P1r![r,1])@@i: i in adfibs];
+for i in [1..9] do
+  gfrs[i] := Difference(gfrs[i],BaseScheme(adfibs[i]));
+end for;
+
+// now degree 6 and smooth
+spts5r := SingularPoints(kum5r);
+P5r := AmbientSpace(kum5r);
+jacsr := [];
+P3r := ProjectiveSpace(Fr,3);
+"writing down the general fibres";
+for i in [1..9] do
+  ls1 := LinearSystem(P5r,1);
+  for s in spts5r do
+    if s in gfrs[i] then ls1 := LinearSystem(ls1,s); end if;
+    if #Sections(ls1) eq 4 then
+      Append(~jacsr,Jacobian(Curve(map_lin(gfrs[i],Sections(ls1)))));
+      continue i;
+    end if;
+  end for;
+end for;
+
+// for i in [1..9] do
+"changing the coordinates on them";
+i := 5;
+lij := LocalInformation(jacsr[i]);
+ptsj := &cat [[Domain(tr1)!(i eq 1/t5 select [1,0] else [Roots(Numerator(i))[1,1]] where i is Qat5!Minimum(x[1])): x in lij|x[5] eq KodairaSymbol(k)]: k in ["I2*","I2"]];
+tris := [TranslationOfSimplex(Domain(tr1),[ptsj[r]: r in Append(s,t)]): s in [[1,2],[2,1]], t in [3..6]];
+trs := [tr1^-1*t: t in tris];
+auts := [hom<Qat5->Qat5|Evaluate(d[1]/d[2],[t5,1])> where d is DefiningPolynomials(t): t in trs];
+chs := [BaseChange(jacsr[i],a): a in auts];
+assert forall{c: c in chs, i in [1/t5,t5+1803/260]|LocalInformation(c,i)[5] eq KodairaSymbol("I2*")};
+"confirming that one of them matches";
+assert exists{r: r in chs|IsIsomorphic(r,tmtdsm)};
+//  if exists{r: r in chs|/*IsIsomorphic(r,tmtdsm)*/jInvariant(r) eq jInvariant(tmtdsm)} then printf "%o! ", i; end if;
+// end for;

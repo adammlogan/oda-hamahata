@@ -1,0 +1,88 @@
+// For this one we just need to match with the Kummer of E x E where E is
+// y^2 = x^3 - x (that seems like the correct twist).
+load "k3pic.mag";
+
+F<i> := QuadraticField(-1);
+p := F!-1; q := F!-1;
+Fr<r> := FunctionField(F);
+to_r_hom := hom<F->Fr|i>;
+
+// load "../shtukas/all_kum_fib.mag";
+es := [EllipticCurve(i): i in [[0,-p-1,0,p,0],[0,-q-1,0,q,0]]];
+// though really we want to work with the squares of these
+P22 := ProductProjectiveSpace(F,[2,2]);
+P2 := ProjectiveSpace(F,2);
+prs := [map<P22->P2|[P22.i: i in [j..j+2]]>: j in [1,4]];
+ee := &meet [Scheme(P2,DefiningPolynomial(es[i]))@@prs[i]: i in [1,2]];
+P4 := ProjectiveSpace(F,4);
+to4 := map<ee->P4|[P22.i[1]*P22.i[2]: i in [[1,4],[1,6],[3,4],[3,6],[2,5]]]>;
+"defining the Kummer in P^4";
+kum4 := Image(to4);
+to4 := map<ee->kum4|DefiningPolynomials(to4)>;
+"writing down some curves on it";
+hi := [to4(ee meet i@@prs[1]): i in [P2|[0,1,0],[0,0,1],[1,0,1],[p,0,1]]];
+vi := [to4(ee meet i@@prs[2]): i in [P2|[0,1,0],[0,0,1],[1,0,1],[q,0,1]]];
+lines := [Scheme(kum4,[P4.1-i*P4.3,P4.2,P4.4]): i in [0,1,p]] cat [Scheme(kum4,[P4.1-i*P4.2,P4.3,P4.4]): i in [0,1,q]];
+gp := GenericPoint(es[1]);
+trs4 := [Image(map<es[1]->ee|&cat [Eltseq(TranslationMap(es[1],p)(gp)): p in [es[1]|[0,1,0],i]]>): i in [[0,1,0],[-1,0],[0,0],[1,0]]];
+cm := map<es[1]->es[1]|[-es[1].1,i*es[1].2,es[1].3]>;
+ncm := map<es[1]->es[1]|[-es[1].1,-i*es[1].2,es[1].3]>;
+cms4 := [Image(map<es[1]->ee|Eltseq(gp) cat Eltseq(cm(gp)+es[1]!i)>): i in [[0,1,0],[-1,0],[0,0],[1,0]]];
+ncms4 := [Image(map<es[1]->ee|Eltseq(gp) cat Eltseq(ncm(gp)+es[1]!i)>): i in [[0,1,0],[-1,0],[0,0],[1,0]]];
+
+trs := [to4(i): i in trs4];
+cms := [to4(i): i in cms4];
+ncms := [to4(i): i in ncms4];
+
+"making the Kummer as a K3 surface and finding the intersections of some curves";
+spts := [RationalPoints(i)[1]: i in PrimaryComponents(SingularSubscheme(kum4))];
+degs := [3,1^^9];
+cs := {@Curve(i): i in &cat [hi,vi,lines,trs,cms,ncms]|Dimension(i) eq 1@};
+bls := make_blowups(kum4:spts := spts, degs := degs);
+mat36,hyp36 := picmat(kum4,bls,spts,degs,cs);
+// sorry for this ad hoc nonsense
+mat36[29,33] := 0; mat36[33,29] := 0;
+Z36,Z20,to20,cls := reduce_mat(mat36);
+hyp := to20(hyp36);
+chs := list_chains(cls);  
+"finding some genus-1 fibration classes";
+fibcl,ancl,dncl,encl,loops,dns,ens,ecl := ade_cls(chs,cls);
+Sort(~fibcl,func<x,y|(x-y,hyp)>);
+auti := hom<F->F|-i>;
+"determining the Galois action on the Picard group";
+perm := SymmetricGroup(36)!([1..12] cat [12+Index(cs,Curve(Scheme(kum4,DefiningPolynomials(BaseChange(c,auti))))): c in cs]);
+gal36 := hom<Z36->Z36|[Z36.(i^perm): i in [1..36]]>;
+gal20 := hom<Z20->Z20|[to20(gal36(i@@to20)): i in Basis(Z20)]>;
+fixgal := Kernel(hom<Z20->Z20|[gal20(i)-i: i in Basis(Z20)]>);
+
+// I think the way to go might be to compare to the image of the other one
+// by the 2-isogeny, since that also has disc 16 and rational rank 19.
+Sort(~ecl,func<x,y|(x-y,hyp)>);  
+c0 := {@x: x in cls|(x,hyp) eq 0@};
+tr := alltr({@x: x in ecl|(x,hyp) le 5@},cls,c0,hyp,Z20);
+neg := allneg({@x: x in ecl|(x,hyp) le 5@},cls,c0,hyp,Z20);    
+tn := tr join neg;
+cto10 := closure(cls,tn,hyp,10);
+// myfib := rep{x: x in ecl|exists(s){s: s in cto10|(s,x) eq 1} and root_sub(esslat(x,s,Z20)) eq {*"D6"^^2,"A3"^^2*}};
+"choosing a good fibration";
+myfib := hyp-&+[cls[i]: i in [1,2,3,19,22]];
+sec := rep{c: c in cls|c in fixgal and (c,myfib) eq 1};
+
+kum4Q := ChangeRing(kum4,Q);
+P4Q := AmbientSpace(kum4Q);
+ls1 := LinearSystem(P4,1);
+"finding its equations over Q";
+for i in [19,22] do ls1 := LinearSystem(ls1,cs[i-12]); end for;
+P1Q := ProjectiveSpace(Q,1);
+Qt<t> := FunctionField(Q);
+to1 := Extend(map<kum4Q->P1Q|Sections(ls1)>);
+kum4t := ChangeRing(kum4,Qt);
+P1t := ProjectiveSpace(Qt,1);
+to1t := map<kum4t->P1t|AllDefiningPolynomials(to1)>;
+gft := (P1t![t,1])@@to1t;
+"finding the generic fibre";
+jact := Jacobian(Curve(RemoveLinearRelations(gft)));
+"checking that it matches";
+assert aInvariants(jact) eq [0,t^3+t,0,-4*t^4,-4*t^7-4*t^5];
+// and now we have the other file.
+

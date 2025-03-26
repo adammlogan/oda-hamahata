@@ -1,0 +1,642 @@
+// This file takes 18 minutes to run on my laptop.
+
+// this one should be relatively easy since there are curves in the
+// isogeny class with full level-2 structure.  It's a Q-curve, so we
+// should have Picard rank 19.
+load "d13-n9.mag";
+load "project.mag";
+load "k3pic.mag";
+load "infnear.mag";
+
+ls3 := LinearSystem(A,3);
+ls3_plus := LinearSystem(A,[x: x in [i+i@@al_p31+i@@al_p32+i@@al_p31@@al_p32: i in Sections(ls3)]|x ne 0]);
+ls3_plus := LinearSystemTrace(ls3_plus,S);
+P10 := ProjectiveSpace(Q,10);
+to10 := map<S->P10|Sections(ls3_plus)>;
+"embedding the Atkin-Lehner quotient into P^10";
+emp := EmptySubscheme(P10);
+repeat
+  emp join:= to10(Scheme(S,[S.1-Random(-10,10)*S.3,S.2-Random(-10,10)*S.5]));
+  pto3 := [x: x in DefiningPolynomials(emp)|Degree(x) le 3];
+  dto3 := {*Degree(i): i in pto3*};
+  dto3;
+until dto3 eq {*2^^24,3^^12*};
+in10 := Scheme(P10,pto3);
+cusp_10 := to10(cusps_s[1]);
+// the four cusps are identified by Atkin-Lehner
+
+"projecting into P^9";
+in9,to9 := project(in10,cusp_10);
+P9 := AmbientSpace(in9);
+// I assume this is the [3;1,1] elliptic point
+spt := in9![11/7,1,0^^8];
+
+/*c9p := [**];
+for p in PrimesUpTo(100) do try
+    F := GF(p);
+    in10p := ChangeRing(in10,F);
+    pts10p := RationalPoints(in10p);
+    spts10p := [x: x in pts10p|IsSingular(x)];
+    in9p := ChangeRing(in9,F);
+    pts9p := RationalPoints(in9p);
+    spts9p := [x: x in pts9p|IsSingular(x)];
+    to9p := map<in10p->in9p|DefiningPolynomials(to9)>;
+    missing := [x: x in spts9p|forall{i: i in spts10p|i in BaseScheme(to9p) or to9p(i) ne x}];
+    assert #missing eq 1;
+    Append(~c9p,missing[1]);
+    printf "%o ", p;
+  catch e; end try;
+end for;
+
+cusp_9 := in9![recover_rat([*x[i]: x in c9p*]): i in [1..10]];*/
+cusp_9 := in9![-773392867161/187604974,-1345274322989/1688444766,-19644,-524,50,41,10,1,0,0];
+assert IsSingular(cusp_9);
+
+"projecting into P^8";
+in8,to8 := project(in9,spt);
+cusp_8 := to8(cusp_9);
+
+// but anyway, it is now degree 15 in P^8, and Magma tells me that K^2 = -1
+// and has h^0 = 1.  That sounds to me like a slightly nonminimal model.
+
+// maybe life will be easier if we project away a bit more.
+
+"projecting into P^7";
+in7,to7 := project(in8,cusp_8);
+P7 := AmbientSpace(in7);
+// ss7 := JacobianSubrankScheme(Scheme(P7,MinimalBasis(in7)));
+// pcss7 := PrimaryComponents(ss7);
+// it's now small enough that we can just use the built-ins
+
+"projecting into P^6";
+pt7 := in7![9460832/63,983328,29216,-2192,-2192,-368,72,1];
+in6,to6 := project(in7,pt7);
+P6 := AmbientSpace(in6);
+
+"projecting into P^5";
+pt6 := in6![552190/189,19198,1738/3,-41,-41,-7,1];
+in5,to5 := project(in6,pt6);
+P5 := AmbientSpace(in5);
+in5 := Surface(P5,Ideal(in5));
+
+"mapping to a K3 found by means of a Magma intrinsic";
+// this has a random component so we have to specify the equations
+// tok3 := MinimalModelKodairaDimensionZero(in5);
+tok3 := map<in5->P6|[-5/744*p.1*p.4 - 5/744*p.1*p.5 + 25/744*p.1*p.6,
+-5/744*p.2*p.4 - 5/744*p.2*p.5 + 25/744*p.2*p.6,
+-5/744*p.3*p.4 - 5/744*p.3*p.5 + 25/744*p.3*p.6,
+-5/744*p.4^2 - 5/744*p.4*p.5 + 25/744*p.4*p.6,
+-5/744*p.4*p.5 - 5/744*p.5^2 + 25/744*p.5*p.6,
+-5/744*p.4*p.6 - 5/744*p.5*p.6 + 25/744*p.6^2,
+p.1*p.4 - 3893/434*p.3*p.4 - 4078064/29295*p.4^2 + 1093/93*p.1*p.5 + 
+    125/217*p.2*p.5 - 52429/1302*p.3*p.5 + 359255587/175770*p.4*p.5 + 
+    414341971/175770*p.5^2 - 5590/93*p.1*p.6 + 1000/217*p.2*p.6 - 
+    36455/1302*p.3*p.6 - 160205277377/23623488*p.4*p.6 - 
+    444142987937/23623488*p.5*p.6 + 949123843525/23623488*p.6^2]> where p is P5;
+k3 := Image(tok3);
+k3 := Surface(P6,Ideal(Scheme(P6,DefiningPolynomials(k3))));
+"checking the singularities";
+ssk3 := SingularSubscheme(k3);
+pcssk3 := PrimaryComponents(ssk3);
+
+// and this is a model with 12 A1 singularities, two orbits over Q(zeta_12),
+// one over Q(sqrt 13), and two over Q.
+Qt<t> := FunctionField(Q);
+P1 := ProjectiveSpace(Q,1);
+P1t := ProjectiveSpace(Qt,1);
+k3t := ChangeRing(k3,Qt);
+P6t := AmbientSpace(k3);
+
+// We will want to determine the Picard lattice and take some Jacobians,
+// etc., to reduce the field of definition and discriminant.
+nf8 := Compositum(QuadraticField(13),CyclotomicField(12));
+real_k3nf8 := ChangeRing(k3,nf8);
+"finding the singular points";
+sptsnf8 := {@real_k3nf8|Eltseq(x): x in RationalPoints(ChangeRing(i,nf8)), i in pcssk3@};
+
+nf8 := QuadraticField(13);
+P1nf8 := ProjectiveSpace(nf8,1);
+
+k3nf8 := ChangeRing(k3,nf8);
+nf8u<u> := FunctionField(nf8);
+k3nf8u := ChangeRing(k3,nf8u);
+// cs := {@Curve(i): i in PrimaryComponents(k3nf8 meet TangentCone(p)), p in sptsnf8|Dimension(i) eq 1@};
+P6nf8 := AmbientSpace(k3nf8);
+"writing down some curves from the singular points";
+lines := {@Line(P6nf8,s): s in Subsets(Set(SingularPoints(k3nf8)),2)@};
+cs := {@Curve(x): x in lines|Dimension(x meet k3nf8) eq 1@};
+
+"finding elliptic fibrations and using them to make more curves";
+for i in [1,2], j in [4,5] do
+  ls1 := LinearSystem(P6,1);
+  for k in [i,j] do
+    ls1 := LinearSystem(ls1,pcssk3[k]);
+  end for;
+  assert #Sections(ls1) eq 2;
+  to1t := map<k3t->P1t|Sections(ls1)>;
+  gft := Difference((P1t![t,1])@@to1t,BaseScheme(to1t));
+  assert Degree(gft) eq 6;
+  gftpt := gft!Eltseq(RationalPoints(pcssk3[j])[1]);
+  gft5,gfto5 := project(gft,gftpt);
+  gft5pt := map_inf_near(gft,gftpt,gfto5);
+
+  gft4,gfto4 := project(gft5,gft5pt);
+  gft4pt := map_inf_near(gft5,gft5pt,gfto4);
+  gft3 := Curve(RemoveLinearRelations(gft4));
+  jact := Jacobian(gft3);
+  mm := MinimalModel(jact);
+  KodairaSymbols(mm);
+  li := LocalInformation(ChangeRing(mm,nf8u));
+  KodairaSymbols(ChangeRing(mm,nf8u));
+  cs join:= curves_from_fibre(k3nf8,li,map<k3nf8->P1nf8|Sections(ls1)>);
+end for;
+
+csq := cs;
+aq := rep{x: x in Automorphisms(nf8)|x(nf8.1) eq -nf8.1};
+
+nf8 := CyclotomicField(12);
+P1nf8 := ProjectiveSpace(nf8,1);
+
+k3nf8 := ChangeRing(k3,nf8);
+nf8u<u> := FunctionField(nf8);
+k3nf8u := ChangeRing(k3,nf8u);
+// cs := {@Curve(i): i in PrimaryComponents(k3nf8 meet TangentCone(p)), p in sptsnf8|Dimension(i) eq 1@};
+P6nf8 := AmbientSpace(k3nf8);
+cs := {@@};
+
+"finding more curves by a similar computation";
+// seems like we're doing this computation twice
+for i in [1,2], j in [4,5] do
+  ls1 := LinearSystem(P6,1);
+  for k in [i,j] do
+    ls1 := LinearSystem(ls1,pcssk3[k]);
+  end for;
+  assert #Sections(ls1) eq 2;
+  to1t := map<k3t->P1t|Sections(ls1)>;
+  gft := Difference((P1t![t,1])@@to1t,BaseScheme(to1t));
+  assert Degree(gft) eq 6;
+  gftpt := gft!Eltseq(RationalPoints(pcssk3[j])[1]);
+  gft5,gfto5 := project(gft,gftpt);
+  gft5pt := map_inf_near(gft,gftpt,gfto5);
+
+  gft4,gfto4 := project(gft5,gft5pt);
+  gft4pt := map_inf_near(gft5,gft5pt,gfto4);
+  gft3 := Curve(RemoveLinearRelations(gft4));
+  jact := Jacobian(gft3);
+  mm := MinimalModel(jact);
+  KodairaSymbols(mm);
+  li := LocalInformation(ChangeRing(mm,nf8u));
+  KodairaSymbols(ChangeRing(mm,nf8u));
+  cs join:= curves_from_fibre(k3nf8,li,map<k3nf8->P1nf8|Sections(ls1)>);
+end for;
+
+"using automorphisms to find the Galois action";
+_,rm1 := IsSquare(nf8!-1);
+_,rm3 := IsSquare(nf8!-3);
+a1 := rep{x: x in Automorphisms(nf8)|x(rm1) eq -rm1 and x(rm3) eq rm3};
+a3 := rep{x: x in Automorphisms(nf8)|x(rm1) eq rm1 and x(rm3) eq -rm3};
+csc := {@x: x in cs|exists{i: i in [a1,a3]|Dimension(Scheme(x,DefiningPolynomials(BaseChange(x,i)))) lt 1}@};
+
+permq := [1..8] cat [10,9] cat [11,12] cat ([12+Index(csq,Curve(AmbientSpace(csq[1]),DefiningPolynomials(BaseChange(c,hom<b->b|-b.1>)))): c in csq] where b is BaseField(csq[1])) cat [21..20+#csc];
+perma1 := [Index(sptsnf8,real_k3nf8![a1(i): i in Eltseq(x)]): x in sptsnf8[1..8]] cat [9..12] cat [13..20] cat [20+Index(csc,Curve(AmbientSpace(csc[1]),DefiningPolynomials(BaseChange(c,a1)))): c in csc];
+perma3 := [Index(sptsnf8,real_k3nf8![a3(i): i in Eltseq(x)]): x in sptsnf8[1..8]] cat [9..12] cat [13..20] cat [20+Index(csc,Curve(AmbientSpace(csc[1]),DefiningPolynomials(BaseChange(c,a3)))): c in csc];
+
+pg24 := PermutationGroup<24|permq,perma1,perma3>;
+assert IsElementaryAbelian(pg24);
+
+"reducing mod p to find the intersections of curves";
+// and now we can try to reduce mod p.
+nf8 := BaseField(real_k3nf8);
+p := 181;
+F := GF(p);
+h := hom<nf8->F|rep{x[1]: x in Roots(DefiningPolynomial(nf8),F)|x[2] eq 1}>;
+k3h := ChangeRing(k3,F);
+sptsh := [k3h|[h(i): i in Eltseq(p)]: p in sptsnf8];
+csh := {@Curve(AmbientSpace(k3h),DefiningPolynomials(BaseChange(ChangeRing(c,nf8),h))): c in csq join csc@};
+
+degs := [1^^12];
+blowups := make_blowups(k3h:spts := sptsh,degs := degs);
+mat,hypvec := picmat(k3h,blowups,sptsh,degs,csh);
+Z24,Z18,to18,cls := reduce_mat(mat);
+hyp := to18(hypvec);
+
+p24s := [hom<Z24->Z24|[Z24.(p[i]): i in [1..24]]>: p in [permq,perma1,perma3]];
+phoms := [hom<Z18->Z18|[to18(p(i@@to18)): i in Basis(Z18)]>: p in p24s];
+chs := list_chains(cls);
+fibcl,ancl,dncl,encl,loops,dns,ens,ecl := ade_cls(chs,cls);
+fixfib := [x: x in fibcl|forall{c: c in phoms|c(x) eq x}];
+// there is a rational fibration of degree 4 with no sections.  Lucky.
+// There is a rational conic that it would be nice to find as well.
+
+"writing down a rational fibration over Q(i)";
+// We can find the fibration over Q(i) and then descend it to Q.
+Qi<i> := QuadraticField(-1);
+k3i := ChangeRing(k3,Qi);
+Embed(Qi,BaseField(csc[1]),rm1);
+cons := [Curve(AmbientSpace(k3i),DefiningPolynomials(ChangeRing(csc[i],Qi))): i in [2,4]];
+dcs := [rep{x: x in PrimaryComponents(Scheme(k3i,Ideal(c)^2))|Dimension(x) eq 1}: c in cons];
+res := Difference(Scheme(k3i,rep{x: x in DefiningPolynomials(dcs[1])|Degree(x) eq 1}),dcs[1]);
+P1i := ProjectiveSpace(Qi,1);
+to1i := map<k3i->P1i|[x: x in DefiningPolynomials(res)|Degree(x) eq 1]>;
+ratfib := Difference((P1i!(to1i(k3i![0^^6,1])))@@to1i,res);
+
+// and now we move the fibration to Q.  I hope that the 19th generator doesn't
+// happen to have even intersection with this one, or if so that at least
+// it isn't over Q so we grow the Q-part of the rank.
+"descending it to Q";
+to1_new := map<k3->P1|[x: x in DefiningPolynomials(Difference(Scheme(k3i,rep{p: p in DefiningPolynomials(ratfib)|Degree(p) eq 1}),ratfib))|Degree(x) eq 1]>;
+to1t_new := map<k3t->P1t|DefiningPolynomials(to1_new)>;
+gft_new := Difference((P1t![t,1])@@to1t_new,BaseScheme(to1t_new));
+jac_new := Jacobian(Curve(RemoveLinearRelations(gft_new)));
+mm_new := MinimalModel(jac_new);
+red_mm := reduce_model(mm_new);
+// in fact we can do better
+tp := Roots(DivisionPolynomial(red_mm,2))[1,1];
+mm1 := Image(map<r->AmbientSpace(r)|[r.1-tp*r.3,r.2,r.3]>) where r is red_mm;
+mm1 := QuadraticTwist(mm1,1/9); // why not
+/*Elliptic Curve defined by y^2 = x^3 + (-2*t^4 - 10*t^3 - 1/2*t^2 + 162*t + 
+    75/2)*x^2 + (t^8 + 10*t^7 + 51/2*t^6 - 335/2*t^5 - 15607/16*t^4 - 1140*t^3 +
+    26813/8*t^2 - 3925/2*t + 5625/16)*x over Univariate rational function field 
+over Rational Field*/
+
+// interestingly a quadratic twist of the I6I3I2I1 family, but I'm sure it's
+// just a weird coincidence.
+// Can we find a section?
+// The D4 fibres are defined over Q(i).
+// The components of I6 are defined over Q(sqrt 13).
+// The components of I3 are defined over Q.
+// What about the components of the D4?
+// I might need a model.
+
+// by playing around mod p, we find that the x-coordinate of a section is
+// (13/9) (t^2+8*t+25)*(t-1/2)^2.  So the section is defined over Q(sqrt 13)
+// and has height 2/3 = 4 - 1 - 1 - (2*4)/6 = 4 - 1 - 1 - (1*5)/6 - 1/2.
+// That means that the components of D4 are at worst defined over Q(sqrt 13,i)
+// and makes the Picard discriminant equal to 4^2*2*3*6/4*2/3 = 96.
+
+// Interestingly, we can enlarge this to 3 different lattices with index 2.
+// Maybe we can get away with passing to discriminant 24 and identifying
+// some fibration that looks like one on the Jacobian of E x E'.
+
+"embedding in P^5 and making a standard K3 model";
+P21 := ProductProjectiveSpace(Q,[2,1]);
+h := hom<CoordinateRing(AmbientSpace(mm1))->c|hom<Qt->c|c.4/c.5>,c.1,c.2,c.3> where c is FieldOfFractions(CoordinateRing(P21));
+in21 := Surface(P21,Numerator(h(DefiningPolynomial(mm1))));
+in5,to5 := SegreEmbedding(in21);
+P5 := AmbientSpace(in5);
+
+P3 := ProjectiveSpace(Q,3);
+to3 := map<in5->P3|[P5.i: i in [2,4,5,6]]>;
+in3 := Image(to3);
+to3 := map<in5->in3|[P5.i: i in [2,4,5,6]]>;
+
+P6 := ProjectiveSpace(Q,6);
+ls2 := LinearSystem(P3,2);
+ls2 := LinearSystem(ls2,Scheme(P3,[P3.3,P3.4]));
+to6 := map<in3->P6|Sections(ls2)>;
+in6 := Image(to6);
+to6 := map<in3->in6|Sections(ls2)>;
+
+P4 := ProjectiveSpace(Q,4);
+to4 := map<in6->P4|[P6.i: i in [3..7]]>;
+in4 := Image(to4);
+to4 := map<in6->in4|[P6.i: i in [3..7]]>;
+
+ls2 := LinearSystem(P4,2);
+for i in PrimeComponents(SingularSubscheme(in4)) do
+  ls2 := LinearSystem(ls2,i);
+end for;
+ls2 := LinearSystemTrace(ls2,in4);
+
+to62 := map<in4->P6|Sections(ls2)>;
+in62 := Image(to62);
+to62 := map<in4->in62|Sections(ls2)>;
+
+to42 := map<in62->P4|[P6.i: i in [1] cat [4..7]]>;
+in42 := Image(to42);
+to42 := map<in62->in42|[P6.i: i in [1] cat [4..7]]>;
+
+ls2 := LinearSystem(P4,2);
+for i in PrimeComponents(SingularSubscheme(in42)) do
+  ls2 := LinearSystem(ls2,i);
+end for;
+ls2 := LinearSystemTrace(ls2,in42);
+
+to52 := map<in42->P5|Sections(ls2)>;
+in52 := Image(to52);
+to52 := map<in42->in52|Sections(ls2)>;
+
+to43 := map<in52->P4|[P5.i: i in Remove([1..6],4)]>;
+in43 := Image(to43);
+to43 := map<in52->in43|[P5.i: i in Remove([1..6],4)]>;
+
+ls2 := LinearSystem(P4,2);
+for i in PrimeComponents(SingularSubscheme(in43)) do
+  ls2 := LinearSystem(ls2,i);
+end for;
+ls2 := LinearSystemTrace(ls2,in43);
+
+to32 := map<in43->P3|Sections(ls2)>;
+in32 := Image(to32);
+to32 := map<in43->in32|Sections(ls2)>;
+
+// and, even though it's in P^3, it's a good model with 9 A1 points.
+// I guess you can get away with things like that when you have a larger
+// discriminant.
+"moving our fibration to the new model";
+dto32 := to5*to3*to6*to4*to62*to42*to52*to43*to32;
+
+fibs := [dto32(Scheme(in21,[P21.4-i*P21.5])): i in [5..10]];
+// and we see what's going on
+fib := map<in32->P1|[P3.2,P3.3-P3.4]>;
+
+bq := Compositum(QuadraticField(-1),QuadraticField(13));
+in21bq := BaseChange(in21,hom<Q->bq|>);
+in32bq := ChangeRing(in32,bq);
+P3bq := AmbientSpace(in32bq);
+dto32bq := map<in21bq->in32bq|[d/g: d in dp]> where g is GCD(dp) where dp is DefiningPolynomials(dto32);
+P1bq := ProjectiveSpace(bq,1);
+
+"writing down some sections";
+secmap := func<x|Image(map<P1bq->in21bq|[Evaluate(i,P1bq.1/P1bq.2): i in Eltseq(x)] cat [P1bq.1,P1bq.2]>)>;
+bqu<u> := FunctionField(bq);
+mm1bq := ChangeRing(mm1,bqu);
+pt := Points(mm1bq,13/9*(u^2+8*u+25)*(u-1/2)^2)[1];
+pts := [i*pt+j*mm1bq![0,0,1]: i in [1,-1], j in [0,1]];
+pts21 := [secmap(i): i in pts];
+
+pts32 := [dto32bq(i): i in pts21];
+// and the points are pretty small ....
+libq := LocalInformation(mm1bq);
+fib_bq := map<in32bq->P1bq|DefiningPolynomials(fib)>;
+// the second of these are the 0 and 2-torsion sections
+cs32 := curves_from_fibre(in32bq,libq,fib_bq) join {@Curve(Scheme(in32bq,i)): i in [[P3.1,P3.3],[P3.1,P3.4]]@} join {@Curve(i): i in pts32@};
+
+sptsbq := SingularPoints(in32bq);
+degs := [1^^#sptsbq];
+
+"working out the new Picard lattice and its Galois action";
+blowups := make_blowups(in32bq:spts := sptsbq,degs := degs);
+mat29,hyp := picmat(in32bq,blowups,sptsbq,degs,cs32);
+Z29,Z19,to19,cls := reduce_mat(mat29);
+hypvec := to19(hyp);
+
+// now we work out the Galois action
+_,rm1 := IsSquare(bq!-1);
+_,r13 := IsSquare(bq!13);
+am1 := rep{x: x in Automorphisms(bq)|x(rm1) eq -rm1 and x(r13) eq r13};
+a13 := rep{x: x in Automorphisms(bq)|x(rm1) eq rm1 and x(r13) eq -r13};
+pm1 := [Index(sptsbq,sptsbq![am1(i): i in Eltseq(s)]): s in sptsbq] cat [Index(cs32,Curve(Scheme(in32bq,DefiningPolynomials(BaseChange(i,am1)))))+&+degs: i in cs32];
+p13 := [Index(sptsbq,sptsbq![a13(i): i in Eltseq(s)]): s in sptsbq] cat [Index(cs32,Curve(Scheme(in32bq,DefiningPolynomials(BaseChange(i,a13)))))+&+degs: i in cs32];
+gal29 := [hom<Z29->Z29|[Z29.i: i in p]>: p in [pm1,p13]];
+gal := [hom<Z19->Z19|[to19(g(x@@to19)): x in Basis(Z19)]>: g in gal29];
+
+chs := list_chains(cls);
+fibcl,ancl,dncl,encl,loops,dns,ens,ecl := ade_cls(chs,cls);
+Sort(~fibcl,func<x,y|(x-y,hypvec)>);
+fixfib := [x: x in fibcl|forall{g: g in gal|g(x) eq x}];
+// There are plenty of Galois-stable fibrations with no section, so we might
+// have a decent chance.
+
+// One that seems promising is an A1^4 D6^2 fibration with full level-2
+// structure, though I guess it could be the wrong kind.
+
+"finding the wrong fibration";
+nsec := [x: x in fixfib|GCD([(x,y): y in cls]) eq 2];
+assert 2*hypvec-&+[cls[i]: i in [4,5,9,9,16,21]] in nsec;
+ls2 := LinearSystem(P3bq,2);
+for i in [16,21] do ls2 := LinearSystem(ls2,cs32[i-9]); end for;
+for i in [4,5] do ls2 := LinearSystem(ls2,sptsbq[i]); end for;
+// ls20 := LinearSystem(AmbientSpace(blowups[8,1]),[2,0]);
+// ls20 := LinearSystem(ls20,ed2);
+ed2 := rep{x: x in PrimaryComponents(Scheme(blowups[9,1],Ideal(blowups[9,2])^2))|Dimension(x) eq 1};
+ls20 := LinearSystem(a,[x: x in DefiningPolynomials(ed2)|Degrees(a,x) eq [2,0]] cat [x*y: x in DefiningPolynomials(ed2), y in [a.i: i in [1..4]]|Degrees(a,x) eq [1,0]]) where a is AmbientSpace(blowups[9,1]);
+ls2 meet:= LinearSystem(P3bq,[Evaluate(i,[P3bq.j: j in [1..4]] cat [0^^3]): i in Sections(ls20)]);
+
+to1_ad := map<in32->P1|Sections(ls2)>;
+in32t := ChangeRing(in32,Qt);
+to1_ad_t := map<in32t->P1t|Sections(ls2)>;
+gf_ad := Curve(Difference((P1t![t,1])@@to1_ad_t,BaseScheme(to1_ad_t)));
+pl := Places(gf_ad![1,0,0,0])[1];
+// unfortunately things get a bit complicated and we can't just use R-R
+
+to9 := map<gf_ad->ProjectiveSpace(Qt,9)|Sections(LinearSystem(AmbientSpace(gf_ad),2))>;
+gf9 := Image(to9);
+pr8 := project(gf9,to9(gf_ad![1,0,0,0]));
+pr7 := RemoveLinearRelations(pr8);
+
+pc1s := [x: x in PrimeComponents(Scheme(pr7,pr7.1))|Degree(x) eq 2];
+// this goes from degree 10 to 4 because one of the components contains
+// the singularities
+pr3 := map_lin(pr7,[x: x in DefiningPolynomials(&join pc1s)|Degree(x) eq 1]);
+
+jac_ad := Jacobian(Curve(pr3));
+// we still need to know whether it's the right or the wrong kind
+// and unfortunately it's the wrong kind, since two of the isogenous curves
+// are D8D5A3 and none D8D8.  However, I'm sure I dealt with this problem
+// in my work with Jared.
+
+// ah, yes, I was right the first time.  I should have taken an
+// A1^2 D4^2 D6 fibration, and then one of the 2-isogenies has to go to
+// D4^2 D8, which is the Kummer.  A1^4 D4 D8 would also be possible
+// (goes to D4 D12).
+"finding the right fibration";
+assert 2*hypvec-&+[cls[i]: i in [6,7,8,8,28,29]] in nsec;
+ls2 := LinearSystem(P3bq,2);
+for i in [28,29] do ls2 := LinearSystem(ls2,cs32[i-9]); end for;
+for i in [6,7] do ls2 := LinearSystem(ls2,sptsbq[i]); end for;
+// ls20 := LinearSystem(AmbientSpace(blowups[8,1]),[2,0]);
+// ls20 := LinearSystem(ls20,ed2);
+ed2 := rep{x: x in PrimaryComponents(Scheme(blowups[8,1],Ideal(blowups[8,2])^2))|Dimension(x) eq 1};
+ls20 := LinearSystem(a,[x: x in DefiningPolynomials(ed2)|Degrees(a,x) eq [2,0]] cat [x*y: x in DefiningPolynomials(ed2), y in [a.i: i in [1..4]]|Degrees(a,x) eq [1,0]]) where a is AmbientSpace(blowups[8,1]);
+ls2 meet:= LinearSystem(P3bq,[Evaluate(i,[P3bq.j: j in [1..4]] cat [0^^3]): i in Sections(ls20)]);
+
+"finding a good model of its generic fibre";
+to1_ad := map<in32->P1|Sections(ls2)>;
+in32t := ChangeRing(in32,Qt);
+to1_ad_t := map<in32t->P1t|Sections(ls2)>;
+gf_ad := Curve(Difference((P1t![t,1])@@to1_ad_t,BaseScheme(to1_ad_t)));
+pl := Places(gf_ad![0,1,0,0])[1];
+// unfortunately things get a bit complicated and we can't just use R-R
+
+to9 := map<gf_ad->ProjectiveSpace(Qt,9)|Sections(LinearSystem(AmbientSpace(gf_ad),2))>;
+gf9 := Image(to9);
+pr8 := project(gf9,to9(gf_ad![0,1,0,0]));
+pr7 := RemoveLinearRelations(pr8);
+
+pc2 := rep{x: x in PrimeComponents(Scheme(pr7,pr7.2))|Degree(x) eq 2};
+// this goes from degree 10 to 4 because one of the components contains
+// the singularities
+pr5 := map_lin(pr7,[x: x in DefiningPolynomials(pc2)|Degree(x) eq 1]);
+pr3 := map_lin(pr5,[x: x in DefiningPolynomials(&join PrimeComponents(SingularSubscheme(pr5)))|Degree(x) eq 1]);
+
+"passing to a 2-isogenous elliptic surface";
+jac_ad := Jacobian(Curve(pr3));
+tj := [jac_ad|[i[1],0,1]: i in Roots(DivisionPolynomial(jac_ad,2))];
+tis := [Codomain(TwoIsogeny(i)): i in tj];
+the_ti := rep{x: x in tis|<KodairaSymbol("I4*"),1> in KodairaSymbols(x)};
+
+li := LocalInformation(the_ti);
+mind8 := [Qt|Minimum(i[1]): i in li|i[5] eq KodairaSymbol("I4*")];
+mind4 := [Qt|Minimum(i[1]): i in li|i[5] eq KodairaSymbol("I0*")];
+pts_ti := [P1t(Qt)|(i eq 1/t select [1,0] else [Roots(Numerator(i))[1,1]]): i in mind8 cat mind4];
+tr_ti := TranslationOfSimplex(P1t,pts_ti);
+// we could twist this by (13/9)^2
+ch_ti := BaseChange(the_ti,hom<Qt->Qt|Evaluate(d[1]/d[2],[t,1])>) where d is DefiningPolynomials(tr_ti);
+// and we need to compare to what will come out of match-d13-n9.mag.
+// let's find the section while we're at it
+"finding the sectino on it";
+Q2<A,B> := FunctionField(Q,2);
+Q2T<T> := FunctionField(Q2);
+chT := ChangeRing(ch_ti,Q2T);
+xc := T^2*(A+B*T)^2;
+aiT := aInvariants(chT);
+ysq := (xc^3+aiT[2]*xc^2+aiT[4]*xc)/(A*T^2+B*T^3)^2;
+A2 := Spec(Parent(Numerator(A)));
+P3 := ProjectiveSpace(Q,3);
+P6 := ProjectiveSpace(Q,6);
+sq3 := map<P3->P6|Coefficients(Polynomial([P3.i: i in [1..4]])^2)>;
+a2to6 := map<A2->P6|Coefficients(Numerator(ysq))>;
+tosq := Image(sq3)@@a2to6;
+assert A2![36/13,81/26] in tosq and Degree(ReducedSubscheme(tosq)) eq 3;
+chpt := Points(ch_ti,(36/13*t+81/26*t^2)^2)[1];
+// and it has height 3, consistent with the other surface in match-d13-n9.mag
+
+"embedding the isogenous surface into projective space";
+P21 := ProductProjectiveSpace(Q,[2,1]);
+h := hom<CoordinateRing(AmbientSpace(ch_ti))->c|hom<Qt->c|c.4/c.5>,c.1,c.2,c.3> where c is FieldOfFractions(CoordinateRing(P21));
+in21 := Surface(P21,Numerator(h(DefiningPolynomial(ch_ti))));
+secmap := func<x|Image(map<P1->in21|[Evaluate(i,P1.1/P1.2): i in Eltseq(x)] cat [P1.1,P1.2]>)>;
+secs := [chpt,chpt+ch_ti![0,0],-chpt,-chpt+ch_ti![0,0]];
+secs21 := [secmap(i): i in secs];
+
+in5,to5 := SegreEmbedding(in21);
+P5 := AmbientSpace(in5);
+in3,to3 := map_lin(in5,[P5.i: i in [2,4,5,6]]);
+ls2 := LinearSystem(P3,2);
+ls2 := LinearSystem(ls2,Scheme(P3,[P3.3,P3.4]));
+P6 := ProjectiveSpace(Q,6);
+to6 := map<in3->P6|Sections(ls2)>;             
+in6 := Image(to6);
+to6 := map<in3->in6|Sections(ls2)>;
+in52,to52 := project(in6,P6![0,1,0^^5]: amb := P5);
+
+// degree 7 on this one
+in4,to4 := project(in52,P5![0,0,0,0,0,1]);
+P4 := AmbientSpace(in4);
+ss4 := SingularSubscheme(in4);
+pcss4 := PrimaryComponents(ss4);
+ls2 := LinearSystem(P4,2);
+for i in pcss4 do ls2 := LinearSystem(ls2,ReducedSubscheme(i)); end for;
+ls2 := LinearSystemTrace(ls2,in4);
+P8 := ProjectiveSpace(Q,8);
+to8 := map<in4->P8|Sections(ls2)>;
+in8 := Image(to8);
+to8 := map<in4->in8|Sections(ls2)>;
+/*min8 := Scheme(P8,[x: x in DefiningPolynomials(in8)|Degree(x) eq 2]);
+repeat lin8 := Scheme(P8,[&+[Random(-3,3)*i: i in DefiningPolynomials(min8)]: j in [1..10]]); printf "."; until in8 eq lin8;
+time jss := JacobianSubrankScheme(lin8);*/
+
+in7,to7 := project(in8,in8![0,0,0,0,1,0,0,0,0]);
+P7 := AmbientSpace(in7);   
+ss7 := SingularSubscheme(in7);
+pcss7 := PrimaryComponents(ss7);
+
+"found model in P^6, improving it";
+in62,to62 := project(in7,in7![1,0^^7]:amb := P6);
+// A4A3A2A1A1A1; can we do better?
+in53,to53 := project(in62,P6![0,0,0,0,1,0,0]); 
+
+in42,to42 := project(in53,P5![0,0,0,1,0,0]:amb := P4);  
+in32,to32 := project(in42,in42![0,0,1,0,0]:amb := P3);
+
+ls2 := LinearSystem(P3,2);
+for i in [1,2,4] do ls2 := LinearSystem(ls2,P3![i eq j select 1 else 0: j in [1..4]]); end for;
+to63 := map<in32->P6|Sections(ls2)>;                                         
+in63 := Image(to63);
+to63 := map<in32->in63|Sections(ls2)>;
+in54,to54 := project(in63,P6![0,0,0,0,1,0,0]);
+dto54 := to5*to3*to6*to52*to4*to8*to7*to62*to53*to42*to32*to63*to54;
+fibs := [Scheme(in21,P21.4-i*P21.5): i in [5..10]];
+fibs54 := [dto54(i): i in fibs];
+secs54 := [dto54(i): i in secs21];
+
+_,oss := HasOnlySimpleSingularities(in54:ReturnList);
+spts54 := [x[1]: x in oss];
+degs54 := [x[3]: x in oss];
+// nothing worse than an A3.  Maybe ....
+assert Max(degs54) eq 3;
+"found good model in P^5, writing down the fibration";
+fib54 := Extend(map<in54->P1|[[P5.1,P5.3],[P5.2,P5.4]]>);
+// two of the components of the D4 at 1 are not rational.
+qf<r13> := QuadraticField(13);
+autqf := hom<qf->qf|-r13>;
+in54qf := ChangeRing(in54,qf);
+spts54qf := [in54qf|Eltseq(i): i in spts54];
+P1qf := ProjectiveSpace(qf,1);
+fib54qf := map<in54qf->P1qf|AllDefiningPolynomials(fib54)>;
+qfu<u> := FunctionField(qf);
+li := LocalInformation(ChangeRing(ch_ti,qfu));
+csqf := curves_from_fibre(in54qf,li,fib54qf) join {@Curve(Scheme(in54qf,MinimalBasis(i))): i in secs54@};
+
+"finding the Picard lattice over Q(sqrt 13)";
+sptsqf := [in54qf|Eltseq(i): i in spts54];
+blsqf := make_blowups(in54qf:spts := sptsqf, degs := degs54);
+
+mat25,hyp54 := picmat(in54qf,blsqf,sptsqf,degs54,csqf);
+Z25,Z19,to19,cls := reduce_mat(mat25);
+p25 := SymmetricGroup(25)!([1..12] cat [12+Index(csqf,Curve(Scheme(in54qf,DefiningPolynomials(BaseChange(c,autqf))))): c in csqf]);
+gal25 := hom<Z25->Z25|[Z25.(i^p25): i in [1..25]]>;
+gal19 := hom<Z19->Z19|[to19(gal25(i@@to19)): i in Basis(Z19)]>;
+hypvec := to19(hyp54);
+
+"writing down a fibration with a D10 to match";
+assert Dimension(Z19) eq 19 and Determinant(GramMatrix(Z19)) eq 48;
+chs := list_chains(cls);
+fibcl,ancl,dncl,encl,loops,dns,ens,ecl := ade_cls(chs,cls);
+// we are trying, at least at first, to match the D10 fibration from the
+// other file.
+d10s := {@&+[cls[d[i]]: i in [1..11] cat [2..8]]: d in dns[7]@};
+Sort(~d10s,func<x,y|(x-y,hypvec)>);
+// it's weird that there is a difference between cls[7] and cls[9],
+// but that's how it is.  If you change one 7 to 9 the fibres change.
+assert hypvec-&+[cls[i]: i in [3,4,5,6,7,7,8,8,9,18,19]] in d10s;
+P5qf := AmbientSpace(in54qf);
+ls1 := LinearSystem(P5qf,1);
+for i in [6,7] do ls1 := LinearSystem(ls1,csqf[i]); end for;
+// the A2 points are already in the base locus, so no point.
+// we make linear forms that vanish twice along curve 7
+c7 := blsqf[5,5,1]@@blsqf[5,4];
+c7sq := rep{x: x in PrimaryComponents(Scheme(blsqf[5,1],Ideal(c7)^2))|Dimension(x) eq 1};
+P543 := AmbientSpace(c7);
+ls100 := LinearSystem(P543,[x: x in DefiningPolynomials(c7sq)|Degrees(P543,x) eq [1,0,0]]);
+// and this must imply that we have 8 twice and 9.
+ls1 meet:= LinearSystem(P5qf,[Evaluate(i,[P5qf.j: j in [1..6]] cat [0^^9]): i in Sections(ls100)]);
+
+"finding the generic fibre and taking its Jacobian";
+d10fib := Extend(map<in54qf->P1qf|Sections(ls1)>);
+in54qfu := ChangeRing(in54qf,qfu);
+P1qfu := ProjectiveSpace(qfu,1);
+d10fibu := map<in54qfu->P1qfu|AllDefiningPolynomials(d10fib)>;
+gfu := (P1qfu![u,1])@@d10fibu;
+gfu4 := project(gfu,SingularPoints(gfu)[1]);
+// and now it's a nice model
+jacu := Jacobian(ChangeRing(Curve(RemoveLinearRelations(gfu4)),Qt));
+// presumably we should be able to match them from the nonrational I2 fibres
+liu := LocalInformation(jacu);
+"changing coordinates to match with the image of the Kummer";
+d2s := [rep{Numerator(Qt!Minimum(i[1])): i in liu|Degree(Numerator(Qt!Minimum(i[1]))) eq 2},Numerator(t^2-8*t+3)]; // second one from the other file
+pts1qf := [P1qf(qf)|[1,0]] cat [P1qf(qf)|[i[1]]: i in Roots(d2s[1],qf)];
+pts2qf1 := [P1qf(qf)|[1,0]] cat [P1qf(qf)|[i[1]]: i in Roots(d2s[2],qf)];
+pts2qf2 := [pts2qf1[i]: i in [1,3,2]];
+tr1qf := TranslationOfSimplex(P1qf,pts1qf);
+trs := [map<P1->P1|DefiningPolynomials(tr1qf^-1*TranslationOfSimplex(P1qf,i))>: i in [pts2qf1,pts2qf2]];
+auts := [hom<Qt->Qt|Evaluate(d[1]/d[2],[t,1])> where d is DefiningPolynomials(tr^-1): tr in trs];
+chs := [BaseChange(jacu,i): i in auts];
+rm := reduce_model(chs[2]);
+trrs := [Image(map<rm->AmbientSpace(rm)|[rm.1-r[1]*rm.3,rm.2,rm.3]>): r in Roots(DivisionPolynomial(rm,2))];
+// from the other file:
+trd10 := EllipticCurve([0,6*t^3 - 119/4*t^2 - 128*t + 147/4,0,-54*t^3 + 1071/4*t^2 + 1152*t - 1647/4,0]);
+"confirming the match";
+assert exists{c: c in trrs|IsIsomorphic(c,trd10)}; // almost equal already
+// and so they are the same!

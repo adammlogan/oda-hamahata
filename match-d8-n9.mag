@@ -1,0 +1,88 @@
+// same as in match-d17-n4-quad.mag, since we're also using D4D4D8
+load "project.mag";
+load "../shtukas/all_kum_fib.mag";
+kum5r := ChangeRing(kum5,Fr);
+P1r := ProjectiveSpace(Fr,1);
+d8d4d4s := [map<kum5r->P1r|DefiningPolynomials(i)>: i in all_fibs[6]];
+gfs := [];
+for i in d8d4d4s do time Append(~gfs,Difference((P1r![r,1])@@i,BaseScheme(i))); end for;
+P4r := ProjectiveSpace(Fr,4);
+gf4s := [];
+for i in gfs do
+  spt := rep{x: x in SingularPoints(kum5r)|x in i and IsSingular(i!x)};
+  Append(~gf4s,project(i,spt:amb := P4r));
+end for;
+
+gf2s := [];
+P2r := ProjectiveSpace(Fr,2);
+for i in gf4s do
+  c2 := rep{x: x in PrimeComponents(Scheme(i,P4r.j)), j in [1..5]|Degree(x) eq 2};
+  Append(~gf2s,map_lin(i,[x: x in DefiningPolynomials(c2)|Degree(x) eq 1]:amb := P2r));
+end for;
+
+jacs := [];
+P3r := ProjectiveSpace(Fr,3);
+for i in gf2s do
+  if Degree(i) eq 3 then
+    Append(~jacs,Jacobian(Curve(i)));
+  else
+    ss2 := SingularSubscheme(i);
+    ls2 := LinearSystem(P2r,2);
+    ls2 := LinearSystem(ls2,&join PrimeComponents(ss2));
+    if #Sections(ls2) eq 4 then
+      to3r := map<i->P3r|Sections(ls2)>;
+    else
+      to4r := map<i->P4r|Sections(ls2)>;
+      i4 := Image(to4r);
+      _,to3r := project(i4,SingularPoints(i4)[1]);
+    end if;
+    Append(~jacs,Jacobian(Curve(Image(to3r))));
+  end if;
+end for;
+
+mms := [MinimalModel(i): i in jacs]; // 1 minute; one of them is slow
+// for convenience let's put the D4s at 0 and infinity and the D8 at 1.
+nms := [];
+for i in mms do
+  pts := [];
+  for j in Roots(Numerator(Discriminant(i))) do
+    if j[2] eq 6 then Append(~pts,P1![j[1]]);
+    end if;
+  end for;
+  if #pts eq 1 then Append(~pts,P1![1,0]); end if;
+  
+  for j in Roots(Numerator(Discriminant(i))) do
+    if j[2] eq 10 then Append(~pts,P1![j[1]]);
+    end if;
+  end for;
+  if #pts eq 2 then Append(~pts,P1![1,0]); end if;
+
+  assert #pts eq 3;
+  tr := TranslationOfSimplex(P1,pts);
+  ch := hom<Fr->Fr|Evaluate(d[1]/d[2],[r,1])> where d is DefiningPolynomials(tr);
+  Append(~nms,MinimalModel(BaseChange(i,ch))); printf ".";
+end for;
+
+pols := [rep{x[1]: x in Factorization(Numerator(Discriminant(m)))|Degree(x[1]) eq 2 and x[2] eq 1}: m in nms];
+qf<r2> := QuadraticField(2);
+nf4 := Compositum(QuadraticField(3),qf);
+A2 := AffineSpace(nf4,2);
+// since the roots are at -25/2 and -8
+im := A2![100,41/2];
+a2map := map<A2->A2|[Coefficient(pols[1],i): i in [0,1]]>;
+rp := [x: x in RationalPoints(im@@a2map)|0 notin Eltseq(x) and 1 notin Eltseq(x)]; 
+es := [[EllipticCurve([0,-i-1,0,i,0]): i in Eltseq(p)]: p in rp];
+
+nf4v<v> := FunctionField(nf4);
+chv := hom<Fr->nf4v|hom<F->nf4v|Eltseq(rp[1])>,v>;
+chnm := BaseChange(nms[1],chv);
+
+tr2 := EllipticCurve([0,-10*v^3-88*v^2+98*v,0,v^6-4*v^5+6*v^4-4*v^3+v^2,0]);
+assert IsIsomorphic(chnm,tr2);
+
+ps,psto := pSelmerGroup(2,{x: x in PrimesUpTo(9,nf4)});
+esqf := [EllipticCurve(i): i in [[r2,r2,r2+1,-162*r2-243,-1495*r2-2130],[r2,r2,r2+1,-2*r2-3,0]]];
+// two 5-isogenous curves in the relevant isogeny class
+assert exists{r: r in ps|forall{i: i in [1,2]|IsIsomorphic(QuadraticTwist(es[1,i],r@@psto),ChangeRing(esqf[i],nf4))}};
+// so this really is the Kummer, at least over the quartic field.
+                         

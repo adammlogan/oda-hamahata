@@ -1,0 +1,1693 @@
+// *** please do not distribute ***
+// if assigned Adjust then delete Adjust,IsNonsingularVector; end if;
+// import "/usr/local/magma/package/Lattice/Lat/neighbors.m":Adjust,IsNonsingularVector;
+
+val := func<x,y|x eq 0 select Infinity() else (y eq 1/Parent(y).1 select Degree(Numerator(x))-Degree(Denominator(x)) else &+[Z|i[2]: i in Factorization(Numerator(x))|i[1] eq y]-&+[Z|i[2]: i in Factorization(Denominator(x))|i[1] eq y])>;
+
+function convert_kodaira(ks)
+  case ks:
+  when KodairaSymbol("II*"):
+    return "E8";
+  when KodairaSymbol("III*"):
+    return "E7";
+  when KodairaSymbol("IV*"):
+    return "E6";
+  when KodairaSymbol("II"):
+    return "A0";
+  when KodairaSymbol("III"):
+    return "A1";
+  when KodairaSymbol("IV"):
+    return "A2";
+  when KodairaSymbol("I0"):
+    return "A0";
+  when KodairaSymbol("In"):
+    n := rep{x: x in [0..10^(#Sprintf("%o",ks)-1)]|ks eq KodairaSymbol("I"*IntegerToString(x))};
+    return (n eq 0 select "A0" else "A"*IntegerToString(n-1));
+  when KodairaSymbol("I0*"):
+    return "D4";
+  when KodairaSymbol("In*"):
+    n := rep{x: x in [0..10^(#Sprintf("%o",ks)-2)]|ks eq KodairaSymbol("I"*IntegerToString(x)*"*")};
+    return ("D"*IntegerToString(n+4));
+  else
+    error "unknown Kodaira symbol";
+  end case;
+end function;
+
+function to21(ec)
+  P21 := ProductProjectiveSpace(BaseField(BaseField(ec)),[2,1]);
+  h := hom<CoordinateRing(AmbientSpace(ec))->c|hom<BaseField(ec)->c|c.4/c.5>,[c.1,c.2,c.3]> where c is FieldOfFractions(CoordinateRing(P21));
+  in21 := Surface(P21,Numerator(h(DefiningPolynomial(ec))));
+  return in21;
+end function;
+  
+load "blowup.mag";
+// functions to work out the Picard group, if we can
+function RandomSubset(s,n)
+  error if #Set(s) le n, "not enough";
+  error if n lt 0, "must be nonnegative";
+  rs := {};
+  while #rs lt n do
+    Include(~rs,Random(s));
+  end while;
+  return rs;
+end function;
+  
+function init_blowup(k3,pt,deg)
+  F := BaseRing(k3);
+  error if deg notin [1..4], "singular point must be A1, A2, A3, A4";
+  pb,ed,prbl,prsec := blowup(k3,pt);
+  pced := PrimaryComponents(prsec(ed));
+  if deg in [1,2] then
+    error if #pced ne deg, "wrong number of components of exceptional divisor";
+    error if deg eq 2 and (Degree(&meet pced) ne 1 or IsSingular(pb!(Eltseq(pt) cat Eltseq(RationalPoints(&meet pced)[1])))), "incorrect configuration";
+    return <pb,ed,prbl,prsec,pced>;
+  else
+    error if #pced ne 2 or Degree(&meet pced) ne 1 or IsNonsingular(pb!(Eltseq(pt) cat Eltseq(RationalPoints(&meet pced)[1]))), "incorrect configuration";
+    if Dimension(AmbientSpace(k3)) eq 3 then
+      P35 := ProductProjectiveSpace(F,[3,5]);
+      P5 := ProjectiveSpace(F,5);
+      P3 := AmbientSpace(k3);
+      ls13 := LinearSystem(P3,1);
+      ls13 := LinearSystem(ls13,P3!pt);
+      P2 := AmbientSpace(pced[1]);
+      ls12 := LinearSystem(P2,1);
+      ls12 := LinearSystem(ls12,P2!(RationalPoints(&meet pced)[1]));
+      sec132 := [Evaluate(l,Sections(ls13)): l in Sections(ls12)];
+      to35 := map<P3->P35|[P3.i: i in [1..4]] cat [x*y: x in Sections(ls13), y in sec132]>;
+      pb := to35(k3);
+      prbl := map<pb->k3|[P35.i: i in [1..4]]>;
+      prsec := map<pb->P5|[P35.i: i in [5..10]]>;
+      ed := pt@@prbl;
+      pced := [ReducedSubscheme(i): i in PrimaryComponents(prsec(ed))];
+      assert #pced eq 3 and {*Degree(&meet i): i in Subsets(Set(pced),2)*} eq {*0,1,1*};
+      if Degree(pced[1] meet pced[2]) eq 0 then pced := [pced[i]: i in [1,3,2]];
+      elif Degree(pced[2] meet pced[3]) eq 0 then pced := [pced[i]: i in [2,1,3]];
+      end if;
+    else
+      n := Dimension(AmbientSpace(k3));
+      Pnn1n2 := ProductProjectiveSpace(F,[n,n-1,n-2]);
+      sppe := SingularPoints(prsec(ed));
+      assert #sppe eq 1;
+      sp := pb!(Eltseq(pt) cat Eltseq(sppe[1]));
+      assert IsSingular(sp);
+      bl2 := map<pb->Pnn1n2|[pb.i: i in [1..2*n+1]] cat [Evaluate(i,[pb.j: j in [n+2..2*n+1]]): i in DefiningPolynomials(Cluster(Codomain(prsec)!sppe[1]))]>;
+      pb2 := Image(bl2);
+      prbl2 := map<pb2->pb|[Pnn1n2.i: i in [1..2*n+1]]>;
+      ed2 := sp@@prbl2;
+      assert Dimension(ed2) eq 1 and #PrimaryComponents(ed2) eq deg-2;
+      pced2 := [bl2(pb meet (ed meet i@@prsec)): i in pced];
+      if deg eq 3 then
+        Insert(~pced2,2,ed2);
+      else
+        pc2 := PrimaryComponents(ed2);
+        misses := {[x,y]: x,y in [1,2]|IsEmpty(pced2[x] meet pc2[y])};
+        assert misses in [{[1,2],[2,1]},{[1,1],[2,2]}];
+        pced2 := [pced2[1]] cat ([1,1] in misses select Reverse(pc2) else pc2) cat [pced2[2]];
+      end if;
+      ed := &join pced2;
+      Pn1n2 := ProductProjectiveSpace(F,[n-1,n-2]);
+      prsec2 := map<ed->Pn1n2|[Pnn1n2.i: i in [n+2..3*n]]>;
+      assert [x eq y select -2 else Degree(x meet y): x,y in pced2] in [[-2,1,0,1,-2,1,0,1,-2],[-2,1,0,0,1,-2,1,0,0,1,-2,1,0,0,1,-2]];
+      pb := pb2;
+      prbl := prbl2*prbl;
+      prsec := prsec2;
+      pced := [prsec(ed meet i): i in pced2];
+    end if;
+    return <pb,ed,prbl,prsec,pced>;
+  end if;
+end function;
+
+function make_blowups(k3:spts := [], degs := [])
+  error if #spts ne #degs, "must give degrees if giving singular points";
+  if #spts eq 0 then
+    ss := SingularSubscheme(Scheme(AmbientSpace(k3),MinimalBasis(k3)));
+    ss := Scheme(AmbientSpace(k3),EasyBasis(Ideal(ss)));
+    pcss := PrimaryComponents(ss);
+    error if exists{i: i in pcss|#RationalPoints(i) eq 0}, "rational points must be over the base field";
+    error if exists{i: i in pcss|Degree(i) gt 4}, "only A1, A2, A3, A4 for now";
+    Sort(~pcss,func<x,y|Degree(y)-Degree(x)>);
+    spts := [RationalPoints(i)[1]: i in pcss];
+    degs := [Degree(i): i in pcss];
+  end if;
+  blowups := [*init_blowup(k3,spts[i],degs[i]): i in [1..#spts]*];
+  return blowups,spts,degs;
+end function;
+
+function picmat(k3,blowups,spts,degs,cs: genera := [0: i in [1..#cs]], skip_checks := false, silent := false);
+  if Max(degs) gt 2 then "warning: picmat may be unreliable when there is an A3 or A4 point (the problem is with the resolutions)"; end if;
+  if not silent then "using", #cs, "curves"; end if;
+  error if #spts ne #Set(spts), "singular points must be distinct";
+  if not skip_checks then
+    error if exists{c: c in cs|Dimension(c) ne 1}, "curves must be curves";
+    error if exists{c: c in cs|not IsReduced(c)}, "curves must be reduced";
+    error if exists{c: c in cs|not IsIrreducible(c)}, "curves must be irreducible";
+  end if;
+  mat := ScalarMatrix(Z,#cs+&+degs,-2);
+  inds := [&+degs[1..i]: i in [0..#degs-1]];
+  for i in [1..#spts], j in [1..degs[i]-1] do
+    mat[inds[i]+j,inds[i]+j+1] := 1; mat[inds[i]+j+1,inds[i]+j] := 1;
+  end for;
+  indc := &+degs;
+  for i in [1..#cs] do mat[indc+i,indc+i] := 2*genera[i]-2; end for;
+
+  for j in [1..#cs] do
+    vec := [];
+    for i in [1..#spts] do
+      if spts[i] notin cs[j] then
+	vec cat:= [0: n in [1..degs[i]]]; continue;
+      elif degs[i] eq 1 and IsNonsingular(cs[j]!spts[i]) then
+	Append(~vec,1); continue;
+      end if;
+      if not silent then printf "%o ", <i,j>; end if;
+      cup := excise((k3 meet cs[j])@@blowups[i,3],blowups[i,2]);
+      cdown := blowups[i,4](blowups[i,2] meet cup);
+      error if Dimension(cdown meet &join blowups[i,5]) ne 0, "dimension is", Dimension(cdown meet &join blowups[i,5]);
+      vec cat:= [Degree(cdown meet c): c in blowups[i,5]];
+    end for;
+    for i in [1..indc] do mat[indc+j,i] := vec[i]; mat[i,indc+j] := vec[i]; end for;
+  end for;
+  if not silent then printf "\n"; end if;
+
+  for j,k in [1..#cs] do
+    if j ge k then continue; end if;
+    deg := Degree(cs[j] meet cs[k]); deg0 := deg;
+    if not silent then printf "%o ", <j,k,deg0>; end if;
+    for i in [1..#spts] do
+      if spts[i] notin cs[j] meet cs[k] then continue; 
+      elif Dimension(TangentCone((cs[j] meet cs[k])!spts[i])) eq 0 and degs[i] eq 1 and forall{c: c in [j,k]|IsNonsingular(cs[c]!spts[i])} then
+	deg -:= 1; continue;
+      else
+	cj := rep{x: x in PrimeComponents(excise((k3 meet cs[j])@@blowups[i,3],blowups[i,2]))|blowups[i,3](blowups[i,1] meet x) eq cs[j]};
+	ck := rep{x: x in PrimeComponents(excise((k3 meet cs[k])@@blowups[i,3],blowups[i,2]))|blowups[i,3](blowups[i,1] meet x) eq cs[k]};
+	// ck := excise((k3 meet cs[k])@@blowups[i,3],blowups[i,2]);
+	deg -:= (deg0-Degree(cj meet ck));
+      end if;
+    end for;
+    mat[indc+j,indc+k] := deg; mat[indc+k,indc+j] := deg;
+  end for;
+  if not silent then printf "\n"; end if;
+
+  hypvec := Solution(mat,Vector([0: i in [1..&+degs]] cat [Degree(i): i in cs]));
+  return mat, hypvec;
+end function;
+
+function reduce_mat(mat)
+  r := Rank(mat);
+  nr := Nrows(mat);
+  ker := Kernel(mat);
+  repeat rs := RandomSubset({1..nr},nr-r);
+  until Determinant(Matrix([[k[j]: k in Basis(ker)]: j in rs])) in [1,-1];
+  keep := [x: x in [1..nr]|x notin rs];
+  matsmall := Matrix(r,r,[mat[i,j]: i,j in keep]);
+
+  Zbig := RSpace(Z,nr,mat);
+  Zsmall := RSpace(Z,r,matsmall);
+  tosmall := hom<Zbig->Zsmall|[Solution(Matrix([mat[i]: i in keep]),r): r in Rows(mat)]>;
+  cls := [tosmall(Zbig.i): i in [1..nr]|mat[i,i] eq -2];
+  return Zbig,Zsmall,tosmall,cls;
+end function;
+
+function make_c0_list(cls,hypvec,tosmall)
+  list := [];
+  hyp := tosmall(hypvec);
+  zero := [x: x in cls|(x,hyp) eq 0];
+  first := 1;
+  while first le #zero do
+    // assumes A_n
+    last := rep{x: x in [first..#zero]|x eq #zero or (cls[x],cls[x+1]) eq 0};
+    Append(~list,zero[first..last]);
+    first := last+1;
+  end while;
+  return list;
+end function;
+  
+function ade_to_ks(ade)
+  // assume no II, III, IV
+  if ade[1] eq "A" then ks := KodairaSymbol("I"*IntegerToString(StringToInteger(ade[2..#ade])+1));
+  elif ade[1] eq "D" then ks := KodairaSymbol("I"*IntegerToString(StringToInteger(ade[2..#ade])-4)*"*");
+  elif ade eq "E6" then ks := KodairaSymbol("IV*");
+  elif ade eq "E7" then ks := KodairaSymbol("III*");
+  elif ade eq "E8" then ks := KodairaSymbol("II*");
+  else error "invalid ADE type";
+  end if;
+  return ks;
+end function;
+
+function euler_char(ks)
+  // is there no easier way to do this?
+  sks := Sprintf("%o",ks);
+  if sks eq "II" then ec := 2;
+  elif sks eq "III" then ec := 3;
+  elif sks eq "IV" then ec := 4;
+  elif sks eq "IV*" then ec := 8;
+  elif sks eq "III*" then ec := 9;
+  elif sks eq "II*" then ec := 10;
+  elif sks[#sks] eq "*" then ec := StringToInteger(sks[2..#sks-1])+6;
+  else ec := StringToInteger(sks[2..#sks]);
+  end if;
+  return ec;
+end function;
+
+// Euler characteristic of root_sub
+e_char := func<rs|&+[(x[1] eq "A" select 1 else 2)+StringToInteger(x[2..#x]): x in rs]>;
+
+// find some curves on a K3 surface in P^3
+function make_curves_p3(k3,spts)
+  k3c := {@x: x in PrimaryComponents(ReducedSubscheme(k3 meet TangentCone(k3!i))), i in spts|Dimension(x) eq 1@};
+  F := BaseRing(k3);
+  P1 := ProjectiveSpace(F,1);
+  Fs := FunctionField(F);
+  k3s := ChangeRing(k3,Fs);
+  P1s := ChangeRing(P1,Fs);
+  P2 := ProjectiveSpace(F,2);
+  P2s := ChangeRing(P2,Fs);  
+  to1ss := [map<k3s->P1s|DefiningPolynomials(i)>: i in k3c|Degree(i) eq 1];
+  genfibs := [Difference((P1s![Fs.1,1])@@i,BaseScheme(i)): i in to1ss];
+  cubs := [Image(map<g->P2s|[k3s.i: i in [1..4]|k3s.i notin [LeadingMonomial(e): e in DefiningPolynomials(g)]]>): g in genfibs];
+  ecs := [Jacobian(GenusOneModel(Curve(i))): i in cubs];
+  lis := [LocalInformation(i): i in ecs];
+  to1s := [map<k3->P1|DefiningPolynomials(i)>: i in k3c|Degree(i) eq 1];    
+  for i in [1..#ecs], j in lis[i] do
+    if j[5] eq KodairaSymbol("I1") then continue; end if;
+    min := Fs!Minimum(j[1]);
+    if Degree(Numerator(min)) ge 2 then return ext<BaseRing(k3)|Numerator(min)>,{@@}; end if;
+    p1pt := P1!(min eq 1/Fs.1 select [1,0] else [Roots(Numerator(min))[1,1]]);
+    to1s := [map<k3->P1|DefiningPolynomials(i)>: i in k3c|Degree(i) eq 1];
+    k3c join:= {@x: x in PrimaryComponents(ReducedSubscheme(p1pt@@to1s[i]))|Dimension(x) eq 1@};
+  end for;
+  return BaseRing(k3), k3c;
+end function;
+
+// need the local information
+function curves_from_fibre(k3,li,to1: all := false)
+  cs := {@@};
+  bsc := PrimeComponents(BaseScheme(to1));
+  P1 := Codomain(to1);
+  F := BaseField(k3);
+  Ft := FunctionField(F);
+  for l in li do
+    if l[5] in [KodairaSymbol(i): i in ["I1","II"]] then continue; end if;
+    m := Numerator(Ft!Minimum(l[1]));
+    if all or Degree(m) le 1 then
+      pt := Scheme(P1,m eq 1 select [P1.2] else Numerator(Evaluate(m,P1.1/P1.2)));
+      fib := pt@@to1;
+      for c in bsc do fib := excise(fib,c); end for;
+      cs join:= {@Curve(i): i in PrimeComponents(fib)@};
+    end if;
+  end for;
+  // they might not be defined over the ground field
+  // assert forall{c: c in cs|Genus(c) eq 0};
+  return cs;
+end function;
+
+is_star := func<ec,pl|x[#x] eq "*" where x is Sprintf("%o",LocalInformation(ec,pl))>;
+
+function reduce_model(ec)
+  Ft := BaseField(ec); // but this would only work over Q
+  h := HyperellipticCurve(&*[Numerator(Ft!Minimum(x[1])): x in LocalInformation(ec)]);
+  ib := IntegralModel(h);
+  mb := MinimalWeierstrassModel(ib);
+  rmb := ReducedModel(mb);
+  _,tor := IsIsomorphic(rmb,h);
+  ch := hom<Ft->Ft|Evaluate(d[1]/d[3],[Ft.1,0,1])> where d is DefiningPolynomials(tor);
+  chec := BaseChange(ec,ch);
+  mm,tomm := MinimalModel(chec);
+
+  j := jInvariant(mm);
+  ecj := EllipticCurveWithjInvariant(j);
+  ectw := MinimalModel(QuadraticTwist(ecj,&*[Numerator(Ft!Minimum(x[1])): x in LocalInformation(ecj) cat LocalInformation(mm)|i[#i] eq "*" where i is Sprintf("%o",x[5])]));
+  _,tw := IsQuadraticTwist(ectw,mm);
+  tsq := &*[Squarefree(i(Q!tw)): i in [Numerator,Denominator]];
+  mymm := QuadraticTwist(ectw,tsq);
+  assert IsIsomorphic(mymm,chec);
+  return mymm;
+end function;
+
+function next_step(k3)
+  Pn := AmbientSpace(k3);
+  ss := Scheme(Pn,EasyBasis(Ideal(SingularSubscheme(k3))));
+  pcss := PrimaryComponents(ss);
+  Sort(~pcss,func<x,y|Degree(y)-Degree(x)>);
+
+  if Dimension(AmbientSpace(Pn)) gt 3 then
+    Pnm1 := ProjectiveSpace(BaseField(k3),Dimension(Pn)-1);
+    prs := [map<k3->Pnm1|DefiningPolynomials(Cluster(Pn!RationalPoints(i)[1]))>: i in pcss|Degree(i) ge 2];
+    newims := [Image(i): i in prs];
+    newmods := {@<newims[i],DefiningPolynomials(prs[i])>: i in [1..#prs]|Degree(newims[i]) eq Degree(k3)-2@};
+  else
+    newmods := {@@};
+  end if;
+
+  if Dimension(AmbientSpace(Pn)) eq 4 then
+    ls2 := LinearSystem(Pn,2);
+    for i in pcss do ls2 := LinearSystem(ls2,Pn!RationalPoints(i)[1]); end for;
+    ls2 := LinearSystemTrace(ls2,k3);
+    if #Sections(ls2) in [4..8] then
+      Pim := ProjectiveSpace(BaseField(k3),#Sections(ls2)-1);
+      topim := map<k3->Pim|Sections(ls2)>;
+      k3im := Image(topim);
+      if Degree(k3im) eq 2*#Sections(ls2)-4 then
+	k3im2 := Scheme(Pim,[x: x in DefiningPolynomials(k3im)|Degree(x) eq 2]);
+	good := (Dimension(Pim) le 5);
+	if k3im eq k3im2 then k3im := k3im2; good := true; end if;
+	topim := map<k3->k3im|Sections(ls2)>;
+	if good then
+	  Include(~newmods,<k3im,Sections(ls2)>);
+	end if;
+      end if;
+    end if;
+  elif Dimension(AmbientSpace(Pn)) eq 3 then
+    ls20 := LinearSystem(Pn,2);
+    for i in [x: x in pcss|Degree(x) ge 3] do ls20 := LinearSystem(ls20,Pn!RationalPoints(i)[1]); end for;
+    for s in Subsets({x: x in [1..#pcss]|Degree(pcss[x]) le 2}) do
+      ls2 := ls20;
+      for t in s do ls2 := LinearSystem(ls2,ReducedSubscheme(pcss[t])); end for;
+      if #Sections(ls2) in [4..8] then
+	Pim := ProjectiveSpace(BaseField(k3),#Sections(ls2)-1);
+	topim := map<k3->Pim|Sections(ls2)>;
+	k3im := Image(topim);
+	if Degree(k3im) eq 2*#Sections(ls2)-4 then
+	  k3im2 := Scheme(Pim,[x: x in DefiningPolynomials(k3im)|Degree(x) eq 2]);
+	  good := (Dimension(Pim) le 5);
+	  if k3im eq k3im2 then k3im := k3im2; good := true; end if;
+	  topim := map<k3->k3im|Sections(ls2)>;
+	  if good then
+	    Include(~newmods,<k3im,Sections(ls2)>);
+	  end if;
+	end if;
+      end if;
+    end for;
+  end if;
+  return newmods;
+end function;
+    
+function try_good_model(k3,depth: max_dim := 5)
+  models := [{@<k3,DefiningPolynomials(IdentityMap(k3))>@}];
+  for i in [1..depth] do
+    Append(~models,{@<x[1],DefiningPolynomials(Normalization(map<k3->x[1]|[Evaluate(e,m[2]): e in x[2]]>))>: x in next_step(m[1]), m in models[i]@});
+    if exists(m){m: m in models[#models]|Dimension(AmbientSpace(m[1])) le max_dim and forall{p: p in PrimaryComponents(Scheme(AmbientSpace(m[1]),EasyBasis(Ideal(SingularSubscheme(m[1])))))|Degree(p) le 2 and Dimension(p) eq 0}} then return m, map<k3->m[1]|m[2]>, models; end if;
+  end for;
+  if forall{p: p in PrimaryComponents(SingularSubscheme(models[1,1,1]))|Degree(p) le 2 and Dimension(p) le 0} then return <k3,DefiningPolynomials(IdentityMap(k3))>,IdentityMap(k3), [models[1..1]]; end if;
+  return false, false, models;
+end function;
+
+function list_curves(k3,k3to:verbose)
+  k33 := Domain(k3to); spts3 := RationalPoints(SingularSubscheme(k33));
+  if verbose then print "making P^3 curves"; end if;
+  fld,c3 := make_curves_p3(k33,spts3);
+  if #c3 eq 0 then return fld,c3; end if;
+  if verbose then print "mapping", #c3, "P^3 curves to new model"; end if;
+  cs := {@k3to(k33 meet i): i in c3@};
+    
+  if verbose then print "finding projections"; end if;
+  Pn := AmbientSpace(k3);
+  prs := [{@<k3,[Pn.i: i in [1..Dimension(Pn)+1]]>@}];
+  while Dimension(Pn)-#prs gt 2 do
+    Pnm := ProjectiveSpace(BaseField(k3),Dimension(Pn)-#prs);
+    newprs := {@@};
+    for i in prs[#prs], j in RationalPoints(SingularSubscheme(i[1])) do
+      newpr := map<i[1]->Pnm|DefiningPolynomials(Cluster(AmbientSpace(i[1])!j))>;
+      imm := Image(newpr);
+      if Degree(imm) eq 2*Dimension(Pnm)-2 then
+	Include(~newprs,<imm,[Evaluate(j,i[2]): j in DefiningPolynomials(newpr)]>);
+      end if;
+    end for;
+    Append(~prs,newprs);
+  end while;
+
+  if verbose then print "finding curves coming from", #&join prs, "projections"; end if;
+  for i in &join prs, j in RationalPoints(SingularSubscheme(i[1])) do
+    if verbose then printf "."; end if;
+    tsc := PrimaryComponents(ReducedSubscheme(i[1] meet TangentCone(i[1]!j)));
+    mi2 := map<k3->i[1]|i[2]>;
+    tscb := {@excise((i[1] meet c)@@mi2,BaseScheme(mi2)): c in tsc@};
+    cs join:= tscb;
+  end for;
+  if verbose then printf "\nfound %o, taking primary components and keeping the curves\n", #cs; end if;
+  newcs := {@@};
+  for c in cs do if verbose then printf "%o ", Degree(c); end if; if Degree(c) le 8 then newcs join:= {@Curve(ReducedSubscheme(i)): i in PrimaryComponents(c)|Dimension(i) eq 1@}; end if; end for; // was degree 10 ....
+  if verbose then printf "\n"; end if;
+  return BaseRing(k3),newcs;
+end function;
+
+function rkdisc(mat)
+  rk := Rank(mat);
+  ker := Kernel(mat);
+  n := Dimension(ker);
+  repeat rs := RandomSubset({1..Nrows(mat)},n);
+  until Determinant(Matrix(n,n,[(ker.i)[j]: i in [1..n], j in rs])) in [1,-1];
+  left := [x: x in [1..Nrows(mat)]|x notin rs];
+  smmat := Matrix(rk,rk,[mat[i,j]: i,j in left]);
+  det := Determinant(smmat);
+  return rk,det,smmat;
+end function;
+
+function dualgp(rs)
+  if ISA(Type(rs),Lat) then rs := RSpace(Z,Rank(rs),GramMatrix(rs)); end if;
+  gm := GramMatrix(rs);
+  gmq := ChangeRing(gm,Q);
+  gmqinv := gmq^-1;
+  den := LCM([Denominator(i): i in Eltseq(gmqinv)]);
+  Zn := AbelianGroup([0: i in Rows(gm)]);
+  sub1 := sub<rs|[Eltseq(den*i): i in Rows(gmqinv)]>;
+  sub2 := sub<sub1|[den*i: i in Basis(rs)]>;
+  dg,dgto := quo<sub1|sub2>;
+  assert #dg eq AbsoluteValue(Determinant(GramMatrix(rs)));
+  ag := AbelianGroup(Moduli(dg));
+  function q(x)
+    xdg := dg!Eltseq(x);
+    xup := xdg@@dgto;
+    pr := Integers(2*den)!((xup,xup)/den);
+    return pr;
+  end function;
+
+  return dg,dgto,q,ag;
+end function;
+
+// here m is an automorphism of rs and we want to know how it acts on
+// the dual group.
+aut_dual := func<rs,m,dg,dgto|[dgto(Domain(dgto)!Eltseq(m(rs!Eltseq((dg.i)@@dgto)))): i in [1..Ngens(dg)]]>;
+  
+  
+function same_dual(q1,ag1,q2,ag2: signs := [1,-1])
+  if not IsIsomorphic(ag1,ag2) then return false; end if;
+  val1 := {*q1(i): i in ag1*}; val2 := [{*s*q2(i): i in ag2*}: s in signs];
+  goodsigns := [signs[x]: x in [1..#signs]|val1 eq val2[x]];
+  if #goodsigns eq 0 then return false; end if;
+  if IsCyclic(ag1) then
+    r := rep{x: x in ag2|exists{s: s in goodsigns|s*q2(x) eq q1(ag1.1)}};
+    match := hom<ag1->ag2|r>;
+    return true, match;
+  end if;
+
+  for s in goodsigns do
+    genims := [{x: x in ag2|Order(x) eq Order(ag1.i) and s*q2(x) eq q1i} where q1i is q1(ag1.i): i in [1..Ngens(ag1)]];
+    stack := [[x]: x in genims[1]];
+    while #stack gt 0 do
+      check := stack[#stack];
+      Remove(~stack,#stack);
+      extend := [Append(check,i): i in genims[#check+1]|forall{j: j in [1..#check]|q1(ag1.j+ag1.(#check+1)) eq s*q2(check[j]+i)}];
+      if #extend gt 0 and #extend[1] eq Ngens(ag1) then
+	match := hom<ag1->ag2|extend[1]>;
+	assert #Kernel(match) eq 1;
+	assert forall{c: c in ag1|q1(c) eq s*q2(match(c))};
+	return true,match;
+      end if;
+      stack cat:= extend;
+    end while;
+  end for;
+  return false;
+end function;
+
+function same_dual_lat(l1,l2)
+  _,_,q1,ag1 := dualgp(l1);
+  _,_,q2,ag2 := dualgp(l2);
+  return same_dual(q1,ag1,q2,ag2);
+end function;
+
+function aut_gp_dual(q,ag: signs := [1,-1], silent := false)
+  if #ag eq 1 then return [[hom<ag->ag|>]: i in signs]; end if;
+  val := {*q(i): i in ag*};
+  goodsigns := [1];
+  if -1 in signs and {*-i: i in val*} eq val then Append(~goodsigns,-1); end if;
+  matches := [];
+  
+  for s in goodsigns do
+    genims := [{x: x in ag|Order(x) eq Order(ag.i) and s*q(x) eq qi} where qi is q(ag.i): i in [1..Ngens(ag)]];
+    imsn := [[[x]: x in genims[1]]];
+    for i in [2..Ngens(ag)] do
+      cp := Cputime();
+      Append(~imsn,[Append(x,y): x in imsn[i-1], y in genims[i]|forall{j: j in [1..i-1]|q(ag.j+ag.i) eq s*q(x[j]+y)}]);
+      if not silent then "found", #imsn[#imsn], "possibilities to step", #imsn, "in", Cputime(cp), "seconds"; end if;
+    end for;
+    homs := [hom<ag->ag|i>: i in imsn[Ngens(ag)]];
+    // assert forall{c: c in homs, g in ag|q(g) eq q(c(g))};
+    assert forall{c: c in homs|#Kernel(c) eq 1};
+    Append(~matches,homs);
+  end for;
+  return matches;
+end function;
+
+function old_same_dual(q1,ag1,q2,ag2: signs := [1,-1])
+  if not IsIsomorphic(ag1,ag2) then return false; end if;
+  val1 := {*q1(i): i in ag1*}; val2 := [{*s*q2(i): i in ag2*}: s in signs];
+  goodsigns := [signs[x]: x in [1..#signs]|val1 eq val2[x]];
+  if #goodsigns eq 0 then return false; end if;
+
+  ct := 0;
+  for s in goodsigns do
+    genims := [{x: x in ag2|Order(x) eq Order(ag1.i) and s*q2(x) eq q1i} where q1i is q1(ag1.i): i in [1..Ngens(ag1)]];
+    for i in CartesianProduct(genims) do
+      ct +:= 1; if ct mod 10000 eq 0 then printf "."; end if;
+      genhom := hom<ag1->ag2|[x: x in i]>;
+      if #Kernel(genhom) eq 1 and forall{j: j in ag1|q1(j) eq s*q2(genhom(j))} then return true, genhom; end if;
+      /*genhoms := [hom<ag1->ag2|[x: x in i]>: i in CartesianProduct(genims)];
+      genauts := [x: x in genhoms|#Kernel(x) eq 1];
+      if exists(goodaut){i: i in genauts|forall{j: j in ag1|q1(j) eq s*q2(i(j))}} then return true,goodaut; end if;*/
+    end for;
+  end for;
+  
+  return false;
+end function;
+  
+function create_trans(nlat,bd)
+  mats := {@@};
+  repeat
+    s := [Random(-10,10): i in [1..6]];
+    for i in [1,3,6] do s[i] *:= 2; end for;
+    m := SymmetricMatrix(s);
+    m *:= Sign(Determinant(m));
+    if IsPositiveDefinite(m) or m eq 0 or Determinant(m) gt bd then
+      continue;
+    else Include(~mats,m);
+    end if;
+  until #mats eq nlat;
+
+  dgs := [];
+  for i in mats do
+    z3 := RSpace(Z,3,i);
+    dg,dgto,q,ag := dualgp(z3);
+    if forall{r: r in dgs|not same_dual(q,ag,r[2],r[3])} then Append(~dgs,<i,q,ag>); end if;
+  end for;
+
+  return dgs;
+end function;
+
+function root_subl(l)
+  rl := sub<l|[x[1]: x in ShortVectors(l,2,2)]>;
+  if Dimension(rl) eq 0 then return ""; end if;
+  rl_str := [(Determinant(i) eq Dimension(i)+1 select "A" else (Determinant(i) eq 4 and Dimension(i) gt 3 select "D" else (Determinant(i)+Dimension(i) eq 9 and Determinant(i) le 3 select "E" else "?"))) * IntegerToString(Dimension(i)): i in OrthogonalDecomposition(rl)];
+  Sort(~rl_str);
+  rl_set := {*x: x in rl_str*};
+  euler_char := #rl_set + #[x: x in rl_set|x[1] ne "A"] + &+[StringToInteger(i[2..#i]): i in rl_set]; // could be wrong if we have II, III, IV
+  tor := [x: x in Invariants(quo<l|rl>)|x ne 0];
+  rank := Rank(l)-Rank(rl);
+  rl_str := &*rl_str;
+  assert "?" notin rl_str;
+  return rl_str, rl_set, euler_char, tor, rank;
+end function;
+
+function list_chains(cs: max := 21, silent := false)
+  chains := [[[i]: i in [1..#cs]]];
+  for i in [1..max-1] do Append(~chains,[Append(i,j): i in chains[#chains], j in [1..#cs]|(cs[j],cs[i[#i]]) eq 1 and forall{s: s in [1..#i-1]|(cs[j],cs[i[s]]) eq 0}]); if not silent then printf "%o ", #chains[#chains]; end if; end for; if not silent then printf "\n"; end if;
+  chains cat:= [[]: i in [max..20]];
+  return chains;
+end function;
+
+function ade_cls(chs,cs:skip_a := false, skip_d := false, skip_e := false, silent := false)
+  loops := [[[x,y]: x,y in [1..#cs]|(cs[x],cs[y]) eq 2]];
+  if not skip_a then
+    for i in [2..21] do
+      Append(~loops,[Append(c,j): c in chs[i], j in [1..#cs]|(cs[j],cs[c[1]]) eq 1 and (cs[j],cs[c[#c]]) eq 1 and forall{s: s in [2..#c-1]|(cs[j],cs[c[s]]) eq 0}]);
+      if not silent then printf "%o ", #loops[#loops]; end if;
+    end for;
+    if not silent then printf "\n"; end if;
+  end if;
+  dns := [];
+  if not skip_d then
+    for i in [3..21] do
+      br2 := [Append(c,j): c in chs[i], j in [1..#cs]|forall{r: r in Remove([1..i],2)|(cs[j],cs[c[r]]) eq 0} and (cs[j],cs[c[2]]) eq 1];
+      Append(~dns,[Append(c,j): c in br2, j in [1..#cs]|forall{r: r in Remove([1..i+1],i-1)|(cs[j],cs[c[r]]) eq 0} and (cs[j],cs[c[i-1]]) eq 1]);
+      if not silent then printf "%o ", #dns[#dns]; end if;
+    end for;
+    if not silent then printf "\n"; end if;
+  end if;
+  ens := [];
+  if not skip_e then
+    for i in [5..7] do
+      br3 := [Append(c,j): c in chs[i], j in [1..#cs]|forall{r: r in Remove([1..i],3)|(cs[j],cs[c[r]]) eq 0} and (cs[j],cs[c[3]]) eq 1];
+      ens cat:= [[Append(c,j): c in br3, j in [1..#cs]|forall{r: r in Remove([1..i+1],v)|(cs[j],cs[c[r]]) eq 0} and (cs[j],cs[c[v]]) eq 1]] where v is [6,1,7][i-4];
+      if not silent then printf "%o ", #ens[#ens]; end if;
+    end for;
+    if not silent then printf "\n"; end if;
+  end if;
+
+  ancl := {@&+[cs[i]: i in x]: x in &cat loops@};
+  dncl := {@&+[cs[i]: i in x cat x[2..#x-3]]: x in &cat dns@};
+  ecoefs := [[1,2,3,2,1,2,1],[2,3,4,3,2,1,2,1],[2,4,6,5,4,3,2,3,1]];
+  encl := {@&+[ecoefs[i,j]*cs[x[j]]: j in [1..i+6]]: x in ens[i], i in [1..3]@};
+  fibcl := ancl join dncl join encl;
+  ecl := {@x: x in fibcl|exists{c: c in cs|(x,c) eq 1}@};
+  return fibcl,ancl,dncl,encl,loops,dns,ens,ecl;
+end function;
+
+function esslat(v,w,rs)
+  Z2 := RSpace(Z,2);
+  to2 := hom<rs->Z2|[[(x,y): y in [v,w]]: x in Basis(rs)]>;
+  lat := LatticeWithGram(-GramMatrix(Kernel(to2)));
+  return lat;
+end function;
+
+function root_sub(lat)
+  sl := sub<lat|ShortestVectors(lat)>;
+  Zn := RSpace(Z,Dimension(lat));
+  slzn := sub<Zn|[Eltseq(i): i in ShortestVectors(lat)]>;
+  tor := Moduli(Saturation(slzn)/slzn);
+  od := OrthogonalDecomposition(sl);
+  rl := {*Strings()|*};
+  if Minimum(lat) eq 2 then
+    for i in od do
+      sdi := IntegerToString(Dimension(i));
+      for l in ["A","D","E"] do
+	if IsIsomorphic(i,LatticeWithGram(CartanMatrix(l*sdi))) then
+	  Include(~rl,l*sdi);
+	  continue i;
+	end if;
+      end for;
+      error "impossible root lattice", Eltseq(GramMatrix(lat));
+    end for;
+  end if;
+  return rl,tor,#ShortVectors(lat,4,4);
+end function;
+
+function bad_fibres(ell,sec,c0,hyp,pic)
+  Z2 := RSpace(Z,2);
+  to2 := hom<pic->Z2|[[(x,y): y in [ell,sec]]: x in Basis(pic)]>;
+  el := Kernel(to2);
+  elat := LatticeWithGram(-GramMatrix(el));
+  sv := {@x[1]: x in ShortVectors(elat,2,2)@};
+  sv_el := {@&+[s*v[i]*el.i: i in [1..Dimension(el)]]: v in sv, s in [1,-1]@};
+  sv_el_p := {@x: x in sv_el|(x,hyp) gt 0 or ((x,hyp) eq 0 and forall{i: i in Eltseq(Solution(Matrix([x: x in c0]),x))|i ge 0})@};
+  assert 2*#sv_el_p eq #sv_el and sv_el eq {@s*i: s in [1,-1], i in sv_el_p@};
+  sv_el_p := {@pic|x: x in sv_el_p|forall{y: y in sv_el_p|x-y notin sv_el_p}@};
+  gr := Graph<{1..#sv_el_p}|{{x,y}: x,y in [1..#sv_el_p]|(sv_el_p[x],sv_el_p[y]) gt 0}>;
+  cc := ConnectedComponents(gr);
+  bfs := [{@sv_el_p[Index(i)]: i in c@}: c in cc];
+  for i in [1..#bfs] do
+    gr := Graph<{1..#bfs[i]}|{{j,k}: j,k in [1..#bfs[i]]|(bfs[i,j],bfs[i,k]) eq 1}>;
+    if Max([Degree(i): i in VertexSet(gr)]) le 2 then
+      // A_n
+      zero := ell-&+bfs[i];
+    else
+      v3 := rep{c: c in VertexSet(gr)|Degree(c) eq 3};
+      if #[s: s in VertexSet(gr)|s adj v3 and Degree(s) eq 1] gt 1 then
+	// D_n
+	zero := ell-&+bfs[i]-&+[s: s in bfs[i]|#[t: t in bfs[i]|(s,t) eq 1] gt 1];
+      else
+	// E_n
+	if #bfs[i] eq 6 then
+	  zero := ell-3*bfs[i,Index(v3)]-2*&+[bfs[i,Index(v)]: v in VertexSet(gr)|v adj v3]-&+[bfs[i,Index(v)]: v in VertexSet(gr)|not (v adj v3) and v ne v3];
+	elif #bfs[i] eq 7 then
+	  zero := ell-4*bfs[i,Index(v3)]-3*&+[bfs[i,Index(v)]: v in VertexSet(gr)|v adj v3 and Degree(v) eq 2]-2*&+[bfs[i,Index(v)]: v in VertexSet(gr)|Distance(v,v3) eq 2 or (v adj v3 and Degree(v) eq 1)]-&+[bfs[i,Index(v)]: v in VertexSet(gr)|Distance(v,v3) eq 3];
+	elif #bfs[i] eq 8 then
+	  d4 := rep{x: x in VertexSet(gr)|Distance(x,v3) eq 4};
+	  p4 := ShortestPath(d4,v3);
+	  p4v := [d4];
+	  for i in p4 do
+	    Append(~p4v,rep{s: s in VertexSet(gr)|s in i and s notin p4v});
+	  end for;
+	  d2 := rep{x: x in VertexSet(gr)|Distance(x,v3) eq 2 and forall{i: i in p4|x notin i}};
+	  p2 := ShortestPath(d2,v3);
+	  p2v := [d2];
+	  for i in p2 do
+	    Append(~p2v,rep{s: s in VertexSet(gr)|s in i and s notin p2v});
+	  end for;
+	  d1 := rep{x: x in VertexSet(gr)|x adj v3 and forall{i: i in p4 cat p2|x notin i}};
+	  assert Degree(d1) eq 1;
+	  zero := ell-&+[(j+1)*bfs[i,Index(p4v[j])]: j in [1..5]]-2*bfs[i,Index(p2v[1])]-4*bfs[i,Index(p2v[2])]-3*bfs[i,Index(d1)];
+	end if;
+      end if;
+    end if;
+    assert (zero,zero) eq -2;
+    Include(~bfs[i],zero);
+  end for;
+  return bfs;
+end function;
+
+function make_mw(ell,sec,c0,hyp,pic: bf := false)
+  if bf cmpeq false then bf := bad_fibres(ell,sec,c0,hyp,pic); end if;
+  triv := sub<pic|&join bf,ell,sec>;
+  mw,mwto := quo<pic|triv>;
+  return mw,mwto,bf;
+end function;
+
+function make_sec(ell,sec,c0,hyp,pic,mwcl: mw := false, mwto := false, bf := false)
+  if mw cmpeq false then mw,mwto,bf := make_mw(ell,sec,c0,hyp,pic); end if;
+  mwcl := mw!mwcl;
+  mwclb := mwcl@@mwto;
+  mwclb -:= ((mwclb,ell)-1)*sec; assert (mwclb,ell) eq 1;
+  bfcoefs := [Eltseq(Solution(Matrix([x: x in b]),ell)): b in bf];
+  Zbad := RSpace(Z,&+[Z|#i: i in bf]);
+  // we know that the section must hit one reduced component of each bad fibre
+  intwith := &join bf;
+  int_clb := Zbad![(mwclb,i): i in intwith];
+  picbad := sub<pic|ell,intwith>;
+  tobad := hom<picbad->Zbad|[[(x,y): y in intwith]: x in Basis(picbad)]>;
+  assert Kernel(tobad) eq sub<picbad|ell>;
+  vecs := [];
+  ct := 0;
+  for i in [1..#bf] do
+    Append(~vecs,{Zbad.(ct+j): j in [1..#bf[i]]|bfcoefs[i,j] eq 1});
+    ct +:= #bf[i];
+  end for;
+  prod := (#bf eq 0 select {<>} else CartesianProduct(vecs));
+  poss := [];
+  for pr in prod do
+    target := int_clb-&+[Zbad|pr[i]: i in [1..#bf]];
+    if target in Image(tobad) then
+      new_mwcl := mwclb-target@@tobad;
+      // correct up to multiples of the fibre
+      selfints := [Q|(x,x) where x is new_mwcl+i*ell: i in [0..2]];
+      pol2 := Interpolation([Q|0,1,2],selfints)+2;
+      sim2 := [new_mwcl+i[1]*ell: i in Roots(pol2)];
+      sim2 := [x: x in sim2|(x,hyp) ge 0 and forall{y: y in &join bf|(x,y) ge 0} and forall{y: y in c0|(x,y) ge 0 or x eq y}];
+      poss cat:= sim2;
+    end if;
+  end for;
+  error if #poss ne 1, "this might mean that the Picard lattice is wrong";
+  cl := poss[1];
+  assert (cl,ell) eq 1 and mwto(cl) eq mwcl;
+  return cl;
+end function;  
+
+// translation from sec1 to sec2
+function translate(ell,sec1,sec2,c0,hyp,pic: mw := false, mwto := false, bf := false)
+  if mw cmpeq false then mw,mwto,bf := make_mw(ell,sec1,c0,hyp,pic); end if;
+  ins := [ell,sec1];
+  outs := [ell,sec2];
+  for i in [1..#Basis(mw)] do
+    if Moduli(mw)[i] eq 0 then
+      Append(~ins,make_sec(ell,sec1,c0,hyp,pic,mw.i));
+      Append(~outs,make_sec(ell,sec1,c0,hyp,pic,mw.i+mwto(sec2)));
+    end if;
+  end for;
+  // ins cat:= [bf[i,j]: j in [1..#bf[i]-1], i in [1..#bf]];
+  // now, what happens on the bad fibres?
+  grs := [Graph<{1..#bf[i]}|{{j,k}: j,k in [1..#bf[i]]|(bf[i,j],bf[i,k]) ge 1}>: i in [1..#bf]];
+  // there are better ways to do this; the map on reducible fibres
+  // should be determined by the source and target components
+  for i in [1..#bf] do
+    curves := bf[i];
+    c_in := rep{x: x in [1..#bf[i]]|(bf[i,x],sec1) eq 1};
+    c_out := rep{x: x in [1..#bf[i]]|(bf[i,x],sec2) eq 1};
+    case &+[Max(Degree(x)-2,0): x in VertexSet(grs[i])]:
+    when 0: // A_n
+      curve_seq_in := [bf[i,c_in]];
+      for j in [1..#curves-1] do Append(~curve_seq_in,rep{x: x in bf[i]|(x,curve_seq_in[j]) gt 0 and x notin curve_seq_in}); end for;
+      curve_seq_out := Rotate(curve_seq_in,1-Index(curve_seq_in,bf[i,c_out]));
+      assert curve_seq_out[1] eq bf[i,c_out];
+      ins cat:= curve_seq_in[1..#bf[i]-1];
+      outs cat:= curve_seq_out[1..#bf[i]-1];
+    when 1: // E_n
+      ag := AutomorphismGroup(grs[i]);
+      ins cat:= [bf[i,j]: j in [1..#bf[i]-1]];
+      if c_in eq c_out then
+	outs cat:= [bf[i,j]: j in [1..#bf[i]-1]];
+      else
+	auts := {x: x in ag|#bf[i]-#Fix(x) eq 6 and c_in^x eq c_out};
+	assert #auts eq 1 and Order(Rep(auts))+#bf[i] eq 10;
+	outs cat:= [bf[i,j^Rep(auts)]: j in [1..#bf[i]-1]];
+      end if;
+    when 2: // D_n
+      ag := AutomorphismGroup(grs[i]);
+      if #bf[i] eq 5 then // D_4, special case
+	if c_in eq c_out then
+	  auts := {Identity(ag)};
+	else
+	  auts := {x: x in ag|Order(x) eq 2 and #Fix(x) eq 1 and c_in^x eq c_out};
+	end if;
+      elif IsEven(#bf[i]) then // D_odd, component group is Z/4Z
+	if c_in eq c_out then
+	  auts := {Identity(ag)};
+	elif exists{a: a in ag|#Fix(a) eq #bf[i]-2 and c_in^a eq c_out} then
+	  // order 2
+	  auts := {x: x in ag|Order(x) eq 2 and c_in^x eq c_out and #Fix(x) eq #bf[i]-4};
+	else // order 4
+	  auts := {x: x in ag|Order(x) eq 4 and c_in^x eq c_out};
+	end if;
+	assert #auts eq 1;
+      else // D_even, component group is Z/2Z
+	if c_in eq c_out then
+	  auts := {Identity(ag)};
+	elif exists{a: a in ag|#Fix(a) eq #bf[i]-2 and c_in^a eq c_out} then
+	  // near case
+	  auts := {x: x in ag|Order(x) eq 2 and #Fix(x) eq #bf[i]-4 and c_in^x eq c_out};
+	else // far case
+	  auts := {x: x in ag|Order(x) eq 2 and #Fix(x) eq 1 and c_in^x eq c_out};
+	end if;
+      end if;
+      assert #auts eq 1;
+      ins cat:= [bf[i,j]: j in [1..#bf[i]-1]];
+      outs cat:= [bf[i,j^Rep(auts)]: j in [1..#bf[i]-1]];
+    else:
+      error "unrecognized root system";
+    end case;
+  end for;
+  ininv := ChangeRing(Matrix(ins),Q)^-1;
+  outmat := ChangeRing(Matrix(outs),Q);
+  trmat := ChangeRing(ininv*outmat,Z);
+  // check the answer
+  dg,dgto,q,ag := dualgp(pic);
+  assert forall{b: b in Basis(Domain(dgto))|IsCoercible(Domain(dgto),Eltseq(b*trmat)) and dgto(b) eq dgto(b*trmat)};
+  assert forall{b: b,c in Basis(pic)|(b,c) eq (pic!(b*trmat),pic!(c*trmat))};
+
+  return trmat;
+end function;
+
+// translation from sec1 to sec2
+function old_translate(ell,sec1,sec2,c0,hyp,pic: mw := false, mwto := false, bf := false)
+  if mw cmpeq false then mw,mwto,bf := make_mw(ell,sec1,c0,hyp,pic); end if;
+  ins := [ell,sec1];
+  outs := [ell,sec2];
+  for i in [1..#Basis(mw)] do
+    if Moduli(mw)[i] eq 0 then
+      Append(~ins,make_sec(ell,sec1,c0,hyp,pic,mw.i));
+      Append(~outs,make_sec(ell,sec1,c0,hyp,pic,mw.i+mwto(sec2)));
+    end if;
+  end for;
+  // ins cat:= [bf[i,j]: j in [1..#bf[i]-1], i in [1..#bf]];
+  // now, what happens on the bad fibres?
+  grs := [Graph<{1..#bf[i]}|{{j,k}: j,k in [1..#bf[i]]|(bf[i,j],bf[i,k]) ge 1}>: i in [1..#bf]];
+  // there are better ways to do this; the map on reducible fibres
+  // should be determined by the source and target components
+  auts := [{[j^x: j in [1..#bf[i]-1]]: x in AutomorphismGroup(grs[i])|rep{s: s in [1..#bf[i]]|(bf[i,s],sec1) eq 1}^x eq rep{s: s in [1..#bf[i]]|(bf[i,s],sec2) eq 1} and (#Vertices(grs[i]) gt #Edges(grs[i]) or (Order(x) eq 1 or #Vertices(grs[i]) le 2 or (#Fix(x) eq 0 and #[e: e in Orbits(sub<AutomorphismGroup(grs[i])|x>)|#e eq 2 and VertexSet(grs[i])!Min(e) adj VertexSet(grs[i])!Max(e)] eq 0)))}: i in [1..#grs]];
+  prod := CartesianProduct(auts);
+  poss := [];
+  ininv := ChangeRing(Matrix(ins),Q)^-1;
+  for p in prod do
+    outs_p := outs cat [bf[i,j]: j in p[i], i in [1..#bf]];
+    trymat := ininv*ChangeRing(Matrix(outs_p),Q);
+    if IsCoercible(GL(Rank(pic),Z),trymat) then
+      Append(~poss,GL(Rank(pic),Z)!trymat);
+    end if;
+  end for;
+  dg,dgto,q,ag := dualgp(pic);
+  poss := [x: x in poss|forall{b: b in Basis(Domain(dgto))|IsCoercible(Domain(dgto),Eltseq(b*x)) and dgto(b) eq dgto(b*x)}];
+  error if #poss ne 1, "this might mean that the Picard lattice is wrong";
+  return poss[1];
+end function;
+
+// c0 is the classes of exceptional curves
+function alltr(fibs,cls,c0,hyp,pic)
+  trmats := {@@};
+  for i in [1..#fibs] do
+    ell := fibs[i];
+    if exists(sec){s: s in cls|(s,ell) eq 1} then
+      mw,mwto,bf := make_mw(ell,sec,c0,hyp,pic);                   
+      secs := [make_sec(ell,sec,c0,hyp,pic,mw.i:mw := mw, mwto := mwto,bf := bf): i in [1..Ngens(mw)]];
+      trmats join:= {@translate(ell,sec,s,c0,hyp,pic:mw := mw,mwto := mwto,bf := bf): s in secs@};
+    end if;
+  end for;
+  return trmats;
+end function;
+
+// negation with sec0 as origin
+function negate(ell,sec,c0,hyp,pic: mw := false, mwto := false, bf := false)
+  if mw cmpeq false then mw,mwto,bf := make_mw(ell,sec,c0,hyp,pic); end if;
+  ins := [ell,sec];
+  outs := [ell,sec];
+  for i in [1..#Basis(mw)] do
+    if Moduli(mw)[i] eq 0 then
+      Append(~ins,make_sec(ell,sec,c0,hyp,pic,mw.i));
+      Append(~outs,make_sec(ell,sec,c0,hyp,pic,-mw.i));
+    end if;
+  end for;
+  grs := [Graph<{1..#bf[i]}|{{j,k}: j,k in [1..#bf[i]]|(bf[i,j],bf[i,k]) eq 1}>: i in [1..#bf]];
+  // this could be improved
+  for i in [1..#grs] do
+    ins cat:= [bf[i,j]: j in [1..#bf[i]-1]];
+    ag := AutomorphismGroup(grs[i]);
+    c_in := rep{x: x in [1..#bf[i]]|(bf[i,x],sec) eq 1};
+    case &+[Maximum(Degree(x)-2,0): x in Vertices(grs[i])]:
+    when 0: // A_n
+      auts := {x: x in ag|c_in^x eq c_in and #Fix(x) eq (#bf[i]+1) mod 2 + 1};
+    when 1: // E_n
+      auts := {x: x in ag|c_in^x eq c_in and Order(x) eq (#bf[i] eq 7 select 2 else 1)};
+    when 2: // D_n
+      auts := {x: x in ag|c_in^x eq c_in and Order(x) eq (#bf[i]+1) mod 2 + 1};
+      else: error "unrecognized root system";
+    end case;
+    assert #auts eq 1;
+    outs cat:= [bf[i,j^Rep(auts)]: j in [1..#bf[i]-1]];
+  end for;
+
+  ininv := ChangeRing(Matrix(ins),Q)^-1;
+  out := ChangeRing(Matrix(outs),Q);
+  negmat := ChangeRing(ininv*out,Z);
+
+  // check it
+  dg,dgto,q,ag := dualgp(pic);
+  assert forall{b: b in Basis(Domain(dgto))|IsCoercible(Domain(dgto),Eltseq(b*negmat)) and dgto(b) eq -dgto(b*negmat)};
+  assert forall{b: b,c in Basis(pic)|(b,c) eq (pic!(b*negmat),pic!(c*negmat))};
+  return negmat;
+end function;
+
+function old_negate(ell,sec,c0,hyp,pic: mw := false, mwto := false, bf := false)
+  if mw cmpeq false then mw,mwto,bf := make_mw(ell,sec,c0,hyp,pic); end if;
+  ins := [ell,sec];
+  outs := [ell,sec];
+  for i in [1..#Basis(mw)] do
+    if Moduli(mw)[i] eq 0 then
+      Append(~ins,make_sec(ell,sec,c0,hyp,pic,mw.i));
+      Append(~outs,make_sec(ell,sec,c0,hyp,pic,-mw.i));
+    end if;
+  end for;
+  ins cat:= [bf[i,j]: j in [1..#bf[i]-1], i in [1..#bf]];
+  zerosecs := [rep{r: r in [1..#bf[i]]|(sec,bf[i,r]) eq 1}: i in [1..#bf]];
+  // now, what happens on the bad fibres?
+  grs := [Graph<{1..#bf[i]}|{{j,k}: j,k in [1..#bf[i]]|(bf[i,j],bf[i,k]) eq 1}>: i in [1..#bf]];
+  // this could be improved
+  auts := [{[j^x: j in [1..#bf[i]-1]]: x in AutomorphismGroup(grs[i])|zerosecs[i]^x eq zerosecs[i] and (#Edges(grs[i]) lt #Vertices(grs[i]) or #Vertices(grs[i]) le 2 or Order(x) eq 2)}: i in [1..#grs]];
+  prod := CartesianProduct(auts);
+  poss := [];
+  ininv := ChangeRing(Matrix(ins),Q)^-1;
+  for p in prod do
+    outs_p := outs cat [bf[i,j]: j in p[i], i in [1..#bf]];
+    trymat := ininv*ChangeRing(Matrix(outs_p),Q);
+    if IsCoercible(GL(Rank(pic),Z),trymat) then
+      Append(~poss,GL(Rank(pic),Z)!trymat);
+    end if;
+  end for;
+  dg,dgto,q,ag := dualgp(pic);
+  poss := [x: x in poss|forall{b: b in Basis(Domain(dgto))|IsCoercible(Domain(dgto),Eltseq(b*x)) and dgto(b) eq -dgto(b*x)}];
+  assert #poss eq 1;
+  return poss[1];
+end function;
+
+function allneg(fibs,cls,c0,hyp,pic)
+  negmats := {@@};
+  for i in [1..#fibs] do
+    ell := fibs[i];
+    if exists(sec){s: s in cls|(s,ell) eq 1} then
+      mw,mwto,bf := make_mw(ell,sec,c0,hyp,pic);                   
+      Include(~negmats,negate(ell,sec,c0,hyp,pic:mw := mw,mwto := mwto,bf := bf));
+    end if;
+  end for;
+  return negmats;
+end function;
+
+function chain(n)
+  n_chain := [n];
+  while n_chain[#n_chain] gt 1 do
+    Append(~n_chain,IsEven(n_chain[#n_chain]) select n_chain[#n_chain] div 2 else n_chain[#n_chain]-1);
+  end while;
+  Reverse(~n_chain);
+  return n_chain;
+end function;
+
+// functions for finding curves and maps given by linear systems
+// the curve c with multiplicity n
+function multiple_curve(c,n,spts,k3)
+  if n eq 1 then return c; end if;
+  ch := chain(n);
+  
+  id := Ideal(c);
+  for i in [2..#ch] do
+    if ch[i]-ch[i-1] eq 1 then
+      id := EasyIdeal(id*Ideal(c)+Ideal(k3));
+    else
+      id := EasyIdeal(id^2+Ideal(k3));
+    end if;
+
+    for p in spts do
+      if p in c then
+	id := Saturation(id,Ideal(Cluster(AmbientSpace(k3)!p)));
+      end if;
+    end for;
+  end for;
+
+  id := Saturation(id,IrrelevantIdeal(AmbientSpace(k3)));
+  assert IsPrimary(id);
+  cn := Scheme(k3,Basis(id));
+  return cn;
+end function;
+
+// forms of degree degl that vanish to a given order on a component
+// of an exceptional divisor (only works for A_1, A_2)
+function ls_sing_pt(degl,degs,blowups,cpt_ind,spt_ind,spts,k3)
+  ls := LinearSystem(AmbientSpace(k3),degl);
+  if degs eq [1: i in degs] then
+    ls := LinearSystem(ls,AmbientSpace(k3)!spts[spt_ind]);
+    return ls;
+  end if;
+  ls0 := LinearSystem(AmbientSpace(blowups[spt_ind,1]),[degl,0]);
+  // might give them in the wrong order
+  // c := PrimaryComponents(blowups[spt_ind,2])[cpt_ind];
+  c := rep{x: x in PrimaryComponents(bi[2])|bi[4](bi[1] meet x) eq bi[5,cpt_ind]} where bi is blowups[spt_ind];
+  ch := chain(&+degs);
+
+  id := Ideal(c);
+  for i in [2..#ch] do
+    if ch[i]-ch[i-1] eq 1 then
+      id := EasyIdeal(id*Ideal(c)+Ideal(blowups[spt_ind,1]));
+    else
+      id := EasyIdeal(id^2+Ideal(blowups[spt_ind,1]));
+    end if;
+  end for;
+
+  if #PrimaryComponents(blowups[spt_ind,2]) eq 2 then
+    nonc := rep{x: x in PrimaryComponents(bi[2])|bi[4](bi[1] meet x) eq bi[5,3-cpt_ind]} where bi is blowups[spt_ind];
+    assert c ne nonc;
+    // id := Saturation(id,Ideal(PrimaryComponents(blowups[spt_ind,2])[3-cpt_ind]));
+    id := Saturation(id,Ideal(nonc));
+  end if;
+  sch := Scheme(AmbientSpace(blowups[spt_ind,1]),id);
+  Saturate(~sch);
+  assert IsPrimary(Ideal(sch));
+  sch := &join PrimaryComponents(sch);
+  
+  // need to work around by multiplying by complementary things
+  ls0 := LinearSystem(ls0,sch); // not working for some reason
+  ls := LinearSystem(ls,[Evaluate(i,[k3.j: j in [1..Dimension(AmbientSpace(k3))+1]] cat [0: j in [1..Dimension(AmbientSpace(k3))]]): i in Sections(ls0)]);
+  return ls;
+end function;
+
+// make a linear system of a given degree with a given base locus
+function make_ls_res(deg,base,cls,c0_list,cs,hyp,blowups,spts,k3)
+  Pn := AmbientSpace(k3);
+  ls := LinearSystem(Pn,deg);
+  for i in Set(base) do
+    if (i,hyp) eq 0 then
+      spt_ind := rep{x: x in [1..#c0_list]|i in c0_list[x]};
+      cpt_ind := Index(c0_list[spt_ind],i);
+      ls meet:= ls_sing_pt(deg,[n eq cpt_ind select Multiplicity(base,i) else 0: n in [1..#c0_list[spt_ind]]],blowups,cpt_ind,spt_ind,spts,k3);
+    else
+      cn := multiple_curve(cs[Index(cls,i)-#&cat c0_list],Multiplicity(base,i),spts,k3);
+      ls := LinearSystem(ls,cn);
+    end if;
+  end for;
+  ls := LinearSystemTrace(ls,k3);
+  return ls;
+end function;
+
+function make_rc(cl,deg,base,cls,c0_list,cs,hyp,blowups,spts,k3)
+  error if deg*hyp-&+base ne cl, "invalid expression of the base";
+  ls := make_ls_res(deg,base,cls,c0_list,cs,hyp,blowups,spts,k3);
+  error if #Sections(ls) ne 1, "not a rational curve class?";
+  sch := Scheme(k3,ls.1);
+  for i in base do
+    if (i,hyp) gt 0 then
+      sch := Difference(sch,cs[Index(cls,i)-#&cat c0_list]);
+    end if;
+  end for;
+  assert IsPrime(Ideal(sch));
+  return sch;
+end function;
+
+function reconcile(maps)
+  P1 := Codomain(maps[1]);
+  inds := [];
+  ind := 0;
+  fibs := [];
+  repeat
+    ind +:= 1;
+    fib := Difference((P1![ind])@@maps[1],BaseScheme(maps[1]));
+    if Dimension(fib) ne 1 or not IsReduced(fib) or not IsIrreducible(fib) or Genus(Curve(fib)) ne 1 then
+      continue;
+    else
+      Append(~inds,ind);
+      Append(~fibs,fib);
+    end if;
+  until #fibs eq 3;
+
+  tr1 := TranslationOfSimplex(P1,[P1(BaseField(P1))|[i]: i in inds]);
+      
+  imss := [[m(Domain(m) meet i): i in fibs]: m in maps];
+  assert forall{x: x in &cat imss|Dimension(x) eq 0 and Degree(x) eq 1};
+  trs := [TranslationOfSimplex(P1,[RationalPoints(i)[1]: i in ims]): ims in imss];
+  m := map<Domain(maps[1])->P1|[DefiningPolynomials(maps[i]*trs[i]^-1*tr1): i in [1..#maps]]>;
+  return m;
+end function;
+
+function reconcile_with_pts(maps,pts)
+  P1 := Codomain(maps[1]);
+  eqs := [DefiningPolynomials(maps[1])];
+  for i in [2..#maps] do
+    pairs := [];
+    for p in pts do
+      try
+        newpair := [maps[j](p): j in [1,i]];
+        assert forall{i: i in pairs, j in [1,2]|i[j] ne newpair[j]};
+        Append(~pairs,newpair);
+      catch e;
+      end try;
+      if #pairs eq 3 then break; end if;
+    end for;
+    error if #pairs ne 3, "need more points";
+    trs := [TranslationOfSimplex(P1,[x[i]: x in pairs]): i in [1,2]];
+    Append(~eqs,DefiningPolynomials(maps[i]*trs[2]^-1*trs[1]));
+  end for;
+  newmap := map<Domain(maps[1])->P1|eqs>;
+  return newmap;
+end function;
+
+function closure(cls,mats,hyp,bd: verbose := false)
+  done := {@@};
+  queue := {@x: x in cls|(x,hyp) le bd@};
+  while #queue gt 0 do
+    done join:= queue;
+    queue := {@x*y: x in queue, y in mats@};
+    queue := {@x: x in queue|(x,hyp) le bd@} diff done;
+    if verbose then "found", #done, "with", #queue, "left in queue"; end if;
+  end while;
+  return done;
+end function;
+
+  
+// divide the vectors in vs by n and produce a new space and map to it
+function divide_vecs(rs,vs,n)
+  error if exists{w: v in vs, w in Basis(rs)|not IsDivisibleBy((v,w),n)}, "vector divided by integer is not in the dual";
+  error if exists{v: v in vs|not IsDivisibleBy((v,v),n^2)}, "dividing by integer gives a vector of nonintegral norm";
+  error if exists{v: v,w in vs|not IsDivisibleBy((v,w),n^2)}, "vectors cannot simultaneously be divided by integer";
+  subn := sub<rs|[n*i: i in Basis(rs)],vs>;
+  basn := Basis(subn);
+  grn := GramMatrix(subn);
+  assert forall{r: r in Eltseq(grn)|IsDivisibleBy(r,n^2)};
+  grndiv := Matrix([[i div n^2: i in Eltseq(r)]: r in Rows(grn)]);
+  newrs := RSpace(Z,Nrows(grn),grndiv);
+  tonew := hom<rs->newrs|[Solution(Matrix(basn),n*i): i in Basis(rs)]>;
+  assert forall{v: v,w in Basis(rs)|(v,w) eq (tonew(v),tonew(w))};
+  return newrs, tonew;
+end function;
+
+divide_vec := func<rs,v,n|r,t where r,t is divide_vecs(rs,[v],n)>;
+
+// quick orthogonal decomposition
+function decompose(lat)
+  d := Dimension(lat);
+  Zlat := sub<RSpace(Z,#Eltseq(lat.1),InnerProductMatrix(lat))|Basis(lat)>;
+  sv := ShortestVectors(lat);
+  rs := sub<lat|sv>;
+  od := OrthogonalDecomposition(rs);
+  sub_rs := [sub<lat|&cat [Basis(od[i]): i in s]>: s in Subsets({1..#od})|#s gt 0];
+  sub_zl := [Saturation(sub<Zlat|[Eltseq(lat!i): i in Basis(v)]>): v in sub_rs];
+  tozs := [hom<Zlat->RSpace(Z,Dimension(i))|[[(x,Zlat!y): y in Basis(i)]: x in Basis(Zlat)]>: i in sub_zl];
+  kers := [Kernel(i): i in tozs];
+  lat_subs := [sub<lat|Basis(sub_zl[i])>: i in [1..#sub_zl]|Zlat eq sub<Zlat|Basis(sub_zl[i]),kers[i]>];
+  lat_kers := [sub<lat|Basis(i)>: i in kers];
+  dims := [AbsoluteValue(2*Dimension(x)-d): x in lat_subs];
+  if #lat_subs eq 0 then
+    return lat,sub<lat|>;
+  else
+    _,ind := Min(dims);
+    return lat_subs[ind],lat_kers[ind];
+  end if;
+end function;
+
+function rec_dec(lat)
+  done := [];
+  todo := [lat];
+  repeat
+    g,k := decompose(todo[#todo]);
+    todo := todo[1..#todo-1];
+    if Dimension(k) eq 0 then
+      Append(~done,g);
+    else
+      todo cat:= [g,k];
+    end if;
+  until #todo eq 0;
+  assert lat eq sub<lat|done> and forall{x: x,y in done|x eq y or Dimension(x meet y) eq 0};
+  return done;
+end function;
+
+function lataut(lat)
+  if assigned lat`AutomorphismGroup then return lat`AutomorphismGroup; end if;
+  dec := rec_dec(lat);
+  if #dec eq 1 then return AutomorphismGroup(lat); end if;
+  // if not, then piece them together
+  gr := Graph<{1..#dec}|{s: s in Subsets({1..#dec},2)|IsIsomorphic(dec[Min(s)],dec[Max(s)])}>;
+  cc := ConnectedComponents(gr);
+  inds := [Index(Rep(i)): i in cc];
+  which := [rep{r: r in inds|exists{c: c in cc|{VertexSet(gr)|i,r} subset c}}: i in [1..#dec]];
+  autgps := [AutomorphismGroup(dec[i]): i in inds];
+  bases := [PowerSequence(lat)|];
+  for i in [1..#dec] do
+    if i in inds then
+      Append(~bases,Basis(dec[i]));
+    else
+      _,match := IsIsomorphic(dec[which[i]],dec[i]);
+      // this always feels backward to me
+      newbas := [&+[(Transpose(match)^-1)[j,k]*dec[i].j: j in [1..Dimension(dec[i])]]: k in [1..Dimension(dec[i])]];
+      assert forall{x: x,y in [1..Dimension(dec[i])]|(newbas[x],newbas[y]) eq (dec[which[i]].x,dec[which[i]].y)};
+      Append(~bases,newbas);
+    end if;
+  end for;
+  basis := &cat bases;
+  bases_out := [];
+  // first the generators acting on each one individually
+  for i in [1..#autgps], j in [1..Ngens(autgps[i])] do
+    Append(~bases_out,&cat [k ne inds[i] select bases[k] else [&+[bases[inds[i],l]*(autgps[i].j)[m,l]: l in [1..#bases[k]]]: m in [1..#bases[k]]]: k in [1..#bases]]);
+  end for;
+
+  // now the permutations
+  for c in cc do
+    ps := [];
+    cs := [Index(x): x in c];
+    if #c gt 1 then
+      Append(~ps,[i eq cs[1] select cs[2] else (i eq cs[2] select cs[1] else i): i in [1..#dec]]);
+    end if;
+    if #c gt 2 then
+      Append(~ps,[i eq cs[#cs] select cs[1] else (i in cs select cs[Index(cs,i+1)] else i): i in [1..#dec]]);
+    end if;
+    bases_out cat:= [&cat [bases[i]: i in p]: p in ps];
+  end for;
+
+  assert forall{b: b in bases_out|Matrix(d,d,[(x,y): x,y in basis]) eq Matrix(d,d,[(x,y): x,y in b])} where d is Dimension(lat);
+
+  autgp := sub<GL(Dimension(lat),Z)|[inv*Matrix(b): b in bases_out]> where inv is Matrix(basis)^-1;
+  assert forall{g: g in Generators(autgp), x,y in Basis(lat)|(x,y) eq (lat!(x*g),lat!(y*g))};
+  
+  lat`AutomorphismGroup := autgp;
+  return autgp;
+end function;
+
+function isisom(lat1,lat2)
+  decs := [rec_dec(i): i in [lat1,lat2]];
+  if #decs[1] ne #decs[2] then return false; end if; // I hope this works
+  while exists(ij){[i,j]: i,j in [1..#decs[1]]|IsIsomorphic(decs[1,i],decs[2,j])} do
+    Remove(~decs[1],ij[1]);
+    Remove(~decs[2],ij[2]);
+  end while;
+  return #(decs[1] cat decs[2]) eq 0;
+end function;
+  
+// borrowed and simplified from Magma package
+/*function my_neighbours(L,p)
+  Lambda := [ Parent(L) | ]; 
+  G := ChangeRing(lataut(L), GF(p));
+  O := LineOrbits(G);
+  good := true;
+  if (Determinant(L) mod p) eq 0 then
+    good := false;
+  end if; 
+  for o in O do
+    v := Adjust(L!o[1].1,p);
+    if not IsZero(v) then
+      if good or IsNonsingularVector(v,p) then
+        Append(~Lambda, Neighbor(L, v, p));
+      end if;   
+    end if;
+  end for;
+
+  Lambda := [LatticeWithGram(ChangeRing(GramMatrix(i),Z)): i in Lambda];
+  return Lambda;
+end function;*/
+
+// I tried to improve this but it didn't really work, because there are other
+// places inside Magma where it changes the basis and doesn't carry the
+// automorphism group along.
+// aut_gp_fn := lataut, isom_fn := isisom, nb_fn := my_neighbours
+function neighbours(pd:bd := Infinity(),thorough := false, avoid := {}, target := <{*"A999"*},[1001]>, lose_mass := 0, p := 2, show := false, done := {@@}, max_nonroot := Infinity(), aut_gp_fn := AutomorphismGroup, isom_fn := IsIsomorphic, nb_fn := Neighbours)
+  _ := aut_gp_fn(pd);
+  mass := Mass(pd) - lose_mass;
+  todo := {@pd@}; rss := [];
+  cp := Cputime();
+  ct := 0;
+  while #todo gt 0 and #done lt bd and &+[Q|1/#aut_gp_fn(i): i in done] lt mass do
+    ct +:= 1;
+    if ct mod 100 eq 0 then
+      printf "%o done, %o found, %o left, time taken %o\n", ct, #done, #todo, Cputime(cp);
+    else printf ".";
+    end if;
+    ind := Random(1,#todo);
+    if <a,b,c> in avoid where a,b,c is root_sub(todo[ind]) then printf "b"; continue; end if;
+    // if forall{r: r in done|(<a,b,c> ne <d,e,f> where a,b,c is root_sub(todo[ind]) where d,e,f is root_sub(r)) or (thorough and not isom_fn(todo[ind],r))} then
+    if forall{r: r in [1..#done]|(<a,b,c> ne rss[r] where a,b,c is root_sub(todo[ind])) or (thorough and not isom_fn(todo[ind],done[r]))} then
+      nlat := [LatticeWithGram(GramMatrix(n)): n in nb_fn(todo[ind],p)];
+      if <a,b,c> notin avoid where a,b,c is root_sub(todo[ind]) then
+	Include(~done,todo[ind]);
+	if show then Eltseq(GramMatrix(todo[ind])); end if;
+	Append(~rss,<a,b,c> where a,b,c is root_sub(todo[ind]));
+        // this could show up as 0 without being 0
+	Append(Append(<a,b,c> where a,b,c is root_sub(todo[ind]),RealField(5)!(mass-&+[1/#aut_gp_fn(i): i in done])),#aut_gp_fn(todo[ind]));
+        if #[x: x in done|Rank(x) ne Rank(sub<x|ShortestVectors(x)>)] gt max_nonroot then return done,rss; end if;
+      end if;
+      todo := {@todo[i]: i in [1..#todo]|i ne ind@};
+      if &+[1/#aut_gp_fn(i): i in done] ne mass then
+	todo join:= (thorough select {@x: x in nlat|(<a,b,c> notin avoid where a,b,c is root_sub(x)) and forall{i: i in done|not isom_fn(x,i)}@} else {@x: x in nlat|<a,b,c> notin rss where a,b,c is root_sub(x)@});
+      end if;
+    else
+      todo := {@todo[i]: i in [1..#todo]|i ne ind@};
+    end if;
+    // error if &+[1/#aut_gp_fn(i): i in done] gt mass, "too heavy";
+    if exists{r: r in rss|<r[1],r[2]> eq target} then return done, rss; end if;
+  end while;
+  return done,rss;
+end function;
+
+function nb_graph(lats: aut_gp_fn := AutomorphismGroup, isom_fn := IsIsomorphic, silent := false)
+  rss := [<a,b,c> where a,b,c is root_sub(i): i in lats];
+  gr := Graph<{1..#lats}|>;
+  Z21 := quo<v|2*v.1> where v is RSpace(Z,1);               
+  for li in [1..#lats] do
+    l := lats[li];
+    lz := RSpace(Z,Rank(l),GramMatrix(l));
+    autl := aut_gp_fn(l);
+    autmod2 := ChangeRing(autl,GF(2));
+    v := VectorSpace(autmod2);
+    orbs := Orbits(autmod2);
+    for i in orbs do
+      r := l!Rep(i);
+      if forall{v: v in Basis(l)|IsEven((r,v))} then continue; end if;
+      k := Kernel(hom<lz->Z21|[[(lz!r,s)]: s in Basis(lz)]>);
+      assert k ne lz;
+      lk := LLLGram(GramMatrix(k));
+      lllk := RSpace(Z,Rank(l),lk);
+      subl := LatticeWithGram(lk);
+      // and now we enlarge it back
+      ker2 := Kernel(ChangeRing(lk,GF(2)));
+      div2 := [lllk!Eltseq(i): i in ker2|i ne 0];
+      div2 := [x: x in div2|(x,x) mod 8 eq 0];
+      // should break these into orbits for proper counting
+      for d in div2 do
+        kd := divide_vec(lllk,d,2);
+        lkd := LatticeWithGram(LLLGram(GramMatrix(kd)));
+        cands := [i: i in [1..#lats]|r eq rss[i]] where r is <a,b,c> where a,b,c is root_sub(lkd);
+        ans := rep{r: r in cands|r eq cands[#cands] or isom_fn(lats[r],lkd)};
+        if li ne ans then
+          if not silent and not (v!li adj v!ans) where v is VertexSet(gr) then printf "%o ", <li,ans>; end if;
+          AddEdge(~gr,li,ans);
+        end if;
+      end for;
+    end for;
+  end for;
+  return gr;
+end function;
+
+function remove_cs(c,hyp,cls)
+  repeat
+    neg := {*Parent(c)|x: x in cls|(x,c) lt 0*};
+    c -:= &+neg;
+  until (c,hyp) lt 0 or #neg eq 0;
+  if (c,hyp) lt 0 then return false,c;
+  else return true,c;
+  end if;
+end function;
+
+function remove_base(c,hyp,cls)
+  expr := {**};
+  repeat
+    neg := {*Parent(c)|x: x in cls|(x,c) lt 0*};
+    expr join:= neg;
+    c -:= &+neg;
+    error if (c,hyp) lt 0, "not effective";
+  until #neg eq 0;
+  return c, expr;
+end function;
+
+// first return value: do we think it is effective?
+// second: did we prove it?
+function is_effective(c,hyp,cls)
+  expr := {**};
+  repeat
+    neg := {*Parent(c)|x: x in cls|(x,c) lt 0*};
+    expr join:= neg;
+    c -:= &+neg;
+    if (c,hyp) lt 0 then return false, true, {**}; end if;
+  until #neg eq 0;
+  if c eq 0 then return true, true, expr;
+  elif (c,c) ge -2 then return true, true, {**};
+  elif (c,hyp) gt 0 then return true, false, {**};
+  else return false, false, {**};
+  end if;
+end function;
+
+// try to find an effective expression, giving preference to things in cls1
+function eff_expr(left,hyp,cls1,cls2: max_ords := [Infinity(): i in cls1], silent := true)
+  l0 := left;
+  expr := {**};
+  while left ne 0 do
+    repeat                       
+      negs := {*Universe(cls2)|x: x in cls2|(left,x) lt 0*};
+      left -:= &+ negs;                       
+      expr join:= negs;
+      if (left,hyp) lt 0 then return false, {**}; end if;
+    until #negs eq 0;
+    if not silent then printf "now %o curves ", #expr; end if;
+    if left eq 0 then
+      assert &+expr eq l0;
+      return true, expr;
+    end if;
+    poss_r := [x: x in cls1|is_effective(left-x,hyp,cls2) and Multiplicity(expr,x) lt max_ords[Index(cls1,x)]];
+    if not silent then printf "%o choices ", #poss_r; end if;
+    if #poss_r eq 0 then return false, {**}; end if;
+    r := Random(poss_r);
+    left -:= r; Include(~expr,r);                           
+  end while;
+  return false, {**};
+end function;
+  
+// find the image of the automorphism group of the essential lattice in that
+// of the dual group
+// we could make this faster by remembering aut_gp_dual(pic)
+function ineq_fibs(el)
+  dge,dgtoe,qe,age := dualgp(el);
+  // dg,dgto,q,ag := dualgp(pic);
+  // _,match := same_dual(q,ag,qe,age);
+  autel := AutomorphismGroup(el);
+  // I think this could be wrong if not all auts of the dual group come from
+  // auts of the Picard lattice
+  autage := AutomorphismGroup(age);
+  authom := hom<autel->autage|[hom<age->age|[age!Eltseq(dgtoe(((dge!Eltseq(age.i))@@dgtoe)*autel.j)): i in [1..Ngens(age)]]>: j in [1..Ngens(autel)]]>;
+  autimgens := [authom(autel.i): i in [1..Ngens(autel)]];
+  /*autim := {@x: x in autimgens@};
+  repeat autim join:= {@x*y: x in autim, y in autimgens@};
+  until autim eq {@x*y: x in autim, y in autimgens@};*/
+  autim := sub<autage|autimgens>;
+  
+  aut_dual := aut_gp_dual(qe,age:silent);
+  assert forall{x: x in autimgens|x in &cat aut_dual};
+  return Z!(#aut_dual[1]/#autim);
+end function;  
+
+// functions for linear automorphisms
+// The first one creates a graph whose vertices are curves and whose
+// edges join those that intersect.  A linear automorphism has to preserve
+// this.  It also has to act linearly and (most of the time) act as +-1
+// on the discriminant group.  But that is still no guarantee.
+function graph(cls,hyp)
+  gr := Graph<{1..#cls}|{{i,j}:i,j in [1..#cls]|(cls[i],cls[j]) gt 0}>;
+  AssignLabels(~gr,[VertexSet(gr)!i: i in [1..#cls]],[(x,hyp): x in cls]);
+  for i,j in [1..#cls] do
+    if (cls[i],cls[j]) gt 0 then
+      AssignLabel(~gr,EdgeSet(gr)!{i,j},(cls[i],cls[j]));
+    end if;
+  end for;
+
+  // not required to preserve labels
+  autgr,av,ae := AutomorphismGroup(gr);
+  ag_elts := [x: x in autgr|forall{g: g in Edges(gr)|Label(EdgeSet(gr)!Image(x,ae,ae!g)) eq Label(g)}];
+  
+  pic := Universe(cls);
+  bas := [];
+  dg,dgto,q,ag := dualgp(pic);
+  for i in [1..#cls] do
+    if Rank(sub<pic|bas>) ne Rank(sub<pic|bas,cls[i]>) then
+      Append(~bas,cls[i]);
+    end if;
+    if #bas eq Rank(pic) then break; end if;
+  end for;
+  matin := ChangeRing(Matrix(bas),Q);
+  matsout := [Matrix([cls[Index(cls,b)^g]: b in bas]): g in ag_elts];
+  possmats := [matin^-1*ChangeRing(i,Q): i in matsout];
+  valid := [forall{x: x in Eltseq(possmats[i])|x in Z} and forall{x: x in [1..#cls]|x^ag_elts[i] eq Index(cls,cls[x]*GL(Rank(pic),Z)!possmats[i])} and forall{b: b in Basis(dg)|(pic!(b@@dgto))*(GL(Rank(pic),Z)!possmats[i]) in Domain(dgto)} and exists{s: s in [1,-1]|forall{b: b in Basis(dg)|dgto((pic!(b@@dgto))*(GL(Rank(pic),Z)!possmats[i])) eq s*b}}: i in [1..#ag_elts]];
+  poss_auts := [<ag_elts[i],ChangeRing(possmats[i],Z)>: i in [1..#ag_elts]|valid[i]];
+  return gr, poss_auts;
+end function;
+
+// determine the linear automorphisms of a K3 surface, using the information
+// from above
+function linear_auts(gr,poss_auts,cls,cs,hyp,spts,c0list,k3)
+  n0 := #&cat c0list;
+  // first find lots of rational points that are intersections of two curves.
+  int_pts := [];
+  for i in [n0+1..#cls], j in [i+1..#cls] do
+    if (cls[i],cls[j]) eq 1 then
+      cs_ij := cs[i-n0] meet cs[j-n0];
+      for k in [1..#spts] do
+	if spts[k] in cs_ij then
+	  cs_ij := excise(cs_ij,Cluster(spts[k]));
+	end if;
+      end for;
+      assert Degree(cs_ij) in [0,1];
+      if Degree(cs_ij) eq 1 then
+	// keep track of the point and of the curves it's on
+	Append(~int_pts,<{i,j},k3!RationalPoints(cs_ij)[1]>);
+      end if;
+    end if;
+  end for;
+
+  // now choose a set of points that is independent enough to determine
+  // a linear automorphism
+  allpts := spts cat [x[2]: x in int_pts];
+  Pn := AmbientSpace(k3);
+  repeat rs := RandomSubset({1..#allpts},Dimension(Pn)+2);
+  until forall{i: i in rs|Rank(Matrix([Eltseq(allpts[j]): j in rs diff {i}])) eq Dimension(Pn)+1};
+  srs := Setseq(rs);
+  ptsin := [Pn(BaseField(k3))|allpts[i]: i in srs];
+  auts := [];
+  tr1 := TranslationOfSimplex(Pn,ptsin);
+  
+  for m in poss_auts do
+    // figure out where the points go
+    ptsout := [Pn(BaseField(k3))|];
+    for i in srs do
+      // a singular point goes to a singular point
+      if i le #spts then Append(~ptsout,spts[rep{x: x in [1..#spts]|c0list[i,1]*m[2] in c0list[x]}]);
+      else
+	// the intersection of two curves goes to the intersection of their
+	// images under the automorphism
+	Append(~ptsout,rep{int_pts[x,2]: x in [1..#int_pts]|int_pts[x,1] eq int_pts[i-#spts,1]^m[1]});
+      end if;
+    end for;
+    try
+      // just in case something has gone wrong ....
+      // construct a candidate for the automorphism
+      tr2 := TranslationOfSimplex(Pn,ptsout);
+      newaut := Normalization(tr1^-1*tr2);
+      // check that it actually works
+      assert forall{x: x in allpts|newaut(x) in k3};
+      assert k3@@newaut eq k3;
+      Append(~auts,<map<k3->k3|DefiningPolynomials(newaut),InverseDefiningPolynomials(newaut)>,m[2]>);
+    catch e; end try;
+  end for;
+  
+  return auts;
+end function;
+
+// works better in char 0
+function subn(s,n)
+  Pn := AmbientSpace(s);
+  ss := [x: x in Subsets({1..Dimension(Pn)+1},n)|p in s and IsSingular(s!p) where p is Pn![i in x select i^2 else 0: i in [1..Dimension(Pn)+1]]];
+  return ss;
+end function;
+
+// rescale the L-function of an elliptic curve over a function field over
+// a finite field and strip the cyclotomic factors
+function strip_l(ec)
+  l := LFunction(ec);
+  f := BaseField(BaseField(ec));
+  scale := Evaluate(l,Parent(l).1/#f);
+  fact := Factorization(scale);
+  l_good := &*[Parent(l)|x[1]^x[2]: x in fact|not IsCyclotomicPolynomial(x[1])];
+  return l_good;
+end function;
+
+  
+function cdo2(v,p)
+  total := p^3+p^2+p+1;
+  fp := GF(p);
+  sqs := {x^2: x in fp|x ne 0};
+  total +:= (s eq 0 select 0 else (s in sqs select 1 else -1)) where s is Evaluate(v,[fp|1,0,0,0]);
+  for i in fp do
+    total +:= (s eq 0 select 0 else (s in sqs select 1 else -1)) where s is Evaluate(v,[fp|i,1,0,0]);
+  end for;
+  for i,j in fp do
+    total +:= (s eq 0 select 0 else (s in sqs select 1 else -1)) where s is Evaluate(v,[fp|i,j,1,0]);
+  end for;
+  for i,j,k in fp do
+    total +:= (s eq 0 select 0 else (s in sqs select 1 else -1)) where s is Evaluate(v,[fp|i,j,k,1]);
+  end for;
+  return total;
+end function;
+
+// given an automorphism on a K3 with a given Picard lattice, try to extend
+// it to something one larger
+// the idea is that the Picard lattice has gr as its Gram matrix, and mat
+// is an automorphism of the structure generated by all but the last of the
+// generators of this.
+function extend_aut(mat,gr)
+  n := Nrows(gr);
+  grdel := RemoveRowColumn(gr,n,n);
+  error if mat*grdel*Transpose(mat) ne grdel, "can only extend automorphisms";
+  Zn := RSpace(Z,n,gr);
+  Znm1 := RSpace(Z,n-1);
+  vnm1 := Znm1![gr[n,i]: i in [1..n-1]];
+  tries := [];
+  ins := ChangeUniverse([0..5],Q);
+  for i in [1..n-1] do
+    outs := [Q|(v,v) where v is Zn!Append(Eltseq(mat[i]),x): x in ins];
+    pol := Interpolation(ins,outs);
+    assert Degree(pol) le 2;
+    Append(~tries,{Z|x[1]: x in Roots(pol-gr[i,i])|x[1] in Z});
+  end for;
+
+  extmats := [];
+  for s in CartesianProduct(tries) do
+    vs := [Zn|Append(Eltseq(mat[i]),s[i]): i in [1..n-1]];
+    tonm1 := hom<Zn->Znm1|[[(x,y): y in vs]: x in Basis(Zn)]>;
+    ker := Kernel(tonm1);
+    assert Dimension(ker) eq 1;
+    if vnm1 in Image(tonm1) then
+      v0 := vnm1@@tonm1;
+      outs := [Q|(v,v) where v is v0+i*ker.1: i in ins];
+      pol := Interpolation(ins,outs);
+      assert Degree(pol) le 2;
+      extmats cat:= [Matrix(Append(vs,v0+Z!i[1]*ker.1)): i in Roots(pol-gr[n,n])|i[1] in Z];
+    end if;
+  end for;
+
+  extmats := [x: x in extmats|x*gr*Transpose(x) eq gr];
+  extmats := [x: x in extmats|forall{i: i,j in [1..n]|Zn!x[i] eq Zn.j or (Zn!x[i],Zn.j) ge 0}];
+  return extmats;
+end function;
+
+refl := func<r,pic|GL(Rank(pic),Z)!Matrix([v-Z!(2*(v,r)/(r,r))*r: v in Basis(pic)])>;
+/*
+P3<x,y,z,t> := ProjectiveSpace(Q,3);
+rdss := [];
+for lins in [[x,y,z,t] cat i: i in [[x+y,y+z,z+t,t+x],[x+y,y+z,y-t,x-y-z+t],[x+y,y+z,x-z-t,x+y+z-t],[x+y,y+z,x-y-z-t,x+y-z+t],[x+y,x-y+z,x-y-t,x+y-z-t],[x+y,x-y+z,y-z-t,x+z-t],[x+y+z-t,x+y-z+t,x-y+z+t,-x+y+z+t],[x+y+z,x+y+t,x+z+t,y+z+t],[x+y+z,x+y-z+t,x-y+z+t,x-y-z-t],[x+y+z+t,x+y-z-t,y-z+t,x+z-t],[x+y+z,y+z+t,x-y-t,x-y+z+t]]] do
+  dpts := [P3(Q)|[MonomialCoefficient(i,P3.j): j in [1..4]]: i in lins];
+  trs := {@@};
+  for i in CartesianPower({1..8},5) do
+    if #{x: x in i} eq 5 then
+      try Include(~trs,TranslationOfSimplex(P3,[dpts[j]: j in i]));
+      catch e; end try;
+    end if; end for;
+  tr1s := {@trs[1]^-1*i: i in trs@};
+  fixps := [x: x in tr1s|forall{p: p in dpts|x(p) in dpts}];
+  perms := [SymmetricGroup(8)|[Index(dpts,x(p)): p in dpts]: x in fixps];
+  parts := {@{@x,{1..8} diff x@}: x in Subsets({1..8},4)@};
+  orbs := [];
+  while #parts gt 0 do orb := {@parts[1]^j: j in perms@}; Append(~orbs,orb); parts diff:= orb; end while;
+  "found", #orbs, "orbits";
+
+  rds := [];
+  for i in orbs do
+    qs := [&*[lins[n]: n in j]: j in i[1]];
+    pen := Scheme(P3,13*qs[1]+17*qs[2]);    
+    for d in [4..7] do
+      m,tom,models := try_good_model(pen,2:max_dim := d);
+      if m cmpne false then break; end if;
+    end for;
+    if m cmpeq false then "failed to find good model"; continue; end if;
+    repeat
+      fld, cs := list_curves(m[1],tom);
+      if #cs eq 0 then
+        if AbsoluteDegree(fld) gt 6 then "field too big, skipping this one"; Append(~rds,<0,0,i[1,1]>); continue i; end if;
+	"extending field to", fld;
+	pen := ChangeRing(pen,fld);
+	m := <ChangeRing(m[1],fld),[CoordinateRing(AmbientSpace(pen))!i: i in m[2]]>;
+	tom := map<pen->m[1]|DefiningPolynomials(tom)>;
+      end if;
+    until #cs gt 0;
+    "degrees and arithmetic genera:", {*<Degree(i),ArithmeticGenus(i)>: i in cs*};
+    _,acf := PointsOverSplittingField(SingularSubscheme(m[1]));
+    ap := AbsolutePolynomial(acf);
+    flds := {@x: x in [*FieldOfGeometricIrreducibility(Curve(i)): i in cs*]|x cmpne BaseRing(m[1])@};
+    if Degree(ap) gt 1 then Include(~flds,ext<BaseRing(m[1])|ap>); end if;
+    if #flds gt 0 then
+      fld := flds[1]; for i in flds do fld := Compositum(fld,i); end for;
+      "changing to field", fld;
+      pen := ChangeRing(pen,fld);
+      m := <ChangeRing(m[1],fld),[CoordinateRing(AmbientSpace(pen))!i: i in m[2]]>;
+      tom := map<pen->m[1]|DefiningPolynomials(tom)>;
+      cs := {@Curve(i): i in PrimaryComponents(Scheme(m[1],DefiningPolynomials(j))), j in cs@};
+    end if;
+    blowups,spts,degs := make_blowups(m[1]);
+    assert {Discriminant(MaximalOrder(FieldOfGeometricIrreducibility(Curve(i)))): i in cs} eq {Discriminant(MaximalOrder(BaseField(m[1])))};
+    mpic := picmat(m[1],blowups,spts,degs,{@x: x in cs|Degree(x) le 5 and ArithmeticGenus(x) eq #[i: i in spts|i in x and IsSingular(x!i)]@});
+    r,d,mat := rkdisc(mpic);
+    "rank", r, "discriminant", d;
+    Append(~rds,<r,d,Eltseq(mat),i[1,1]>);
+    "done orbit", Index(orbs,i);
+  end for;
+  Append(~rdss,rds);
+  "found ranks and discriminants", rds;
+  "finished rigid K3 #", #rdss;
+end for;
+
+*/
+// orbit 5: 19,20
+// orbit 8: 19,16
+
