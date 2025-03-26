@@ -1,0 +1,31 @@
+Magma scripts related to the computations in the paper "Rings of Hilbert
+modular forms, computations on Hilbert modular surfaces, and the
+Oda-Hamahata conjecture"
+
+In general, for each case of the conjecture considered in the paper, there
+is one file that shows how the ring of modular forms was computed using
+the software (and, in most cases, the Atkin-Lehner involutions), one file
+that does the work of reducing it to a K3 surface that is close to the
+desired Kummer surface, and one that matches that K3 surface with one
+coming from the Kummer surface.  These are labeled
+
+d*-n*.mag (constructing the ring)
+d*-n*-work.mag (reducing the surface)
+match-d*-n*.mag (connecting it with the Kummer surface).
+
+Sometimes an additional word in the name expresses some special circumstance
+regarding the given example.  In cases where we are not able to verify the
+conjecture there is no match file.
+
+In addition there are a few auxiliary files:
+
+k3pic.mag     general computations with K3 surfaces and their Picard lattices
+blowup.mag    functions to work with a blowup, especially of a surface at an A_i point (i < 5)
+interp.mag    functions for interpolating polynomials and rational numbers
+project.mag   functions for finding the images of projections and of more general maps
+all_kum_fib.mag script that sets up the elliptic fibrations on the Kummer of E x E' (originally part of a project with Jared Weinstein, arXiv:2211.11149)
+
+Unfortunately much of the code is more complicated than it should be, with
+various linear system calculations spelled out rather than relegated to
+functions, because bugs in some versions of Magma prevent the general
+functions from working in all cases.
